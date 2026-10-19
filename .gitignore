@@ -2,3 +2,10 @@
 /pitch
 /docs
 styleref.pdf
+# Flutter
+.dart_tool/
+build/
+.idea/
+*.iml
+.metadata
+
