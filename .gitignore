@@ -1,12 +1,43 @@
+# --- Project files kept out of the repo ---
 /refpages
 /pitch
 /docs
+/.opencode
 styleref.pdf
-# Flutter
-.dart_tool/
-build/
+
+# --- Secrets (never commit) ---
+.env*
+!.env.example
+*.crt
+*.pem
+*.key
+*.jks
+*.keystore
+key.properties
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
 .idea/
 *.iml
-.metadata
-/.opencode
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.log
 
+# --- Flutter / Dart (mobile/) ---
+# Platform folders (mobile/android, mobile/ios) carry their own .gitignore.
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+coverage/
+.metadata
+
+# --- Node.js (backend/) ---
+node_modules/
+npm-debug.log*
+.npm/
