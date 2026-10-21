@@ -53,24 +53,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
           children: [
             Row(
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFFF7A93), C.pinkDeep],
+                      colors: C.pinkPanel,
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(11),
+                    borderRadius: BorderRadius.circular(13),
                   ),
                   child: const Icon(
                     Icons.sports_tennis,
-                    size: 18,
+                    size: 20,
                     color: Colors.white,
                   ),
                 ),
@@ -78,22 +78,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const Text(
                   'SEBAR',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
+                    letterSpacing: 1.4,
                     color: C.ink,
                   ),
                 ),
                 const Spacer(),
-                const Pill('Satu app, dua akun', background: C.surfaceAlt),
+                const Pill(
+                  'Satu app, dua akun',
+                  color: C.tealDeep,
+                  background: C.tealSoft,
+                ),
               ],
             ),
-            const SizedBox(height: 26),
+            const SizedBox(height: 28),
             Text(
-              isVenue ? 'Kelola lapangan,\nbukan cari lawan.' : 'Sewa lapangan,\nbayar patungan.',
+              isVenue
+                  ? 'Kelola lapangan,\nbukan cari lawan.'
+                  : 'Sewa lapangan,\nbayar patungan.',
               style: T.display,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text(
               isVenue
                   ? 'Akun mitra terpisah dari akun pemain. Slot, harga, dan '
@@ -106,11 +112,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             _RoleSwitch(role: _role, onPick: _pickRole),
             const SizedBox(height: 18),
             SportPanel(
-              gradient: isVenue
-                  ? const [Color(0xFF9C90FF), Color(0xFF6C5CE0)]
-                  : const [Color(0xFFFF7A93), C.pinkDeep],
-              height: 118,
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              gradient: isVenue ? C.purplePanel : C.pinkPanel,
+              radius: 30,
+              height: 132,
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
               child: Row(
                 children: [
                   Expanded(
@@ -119,29 +124,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Pill(
-                          isVenue ? 'Pencairan bulan ini' : 'Split bill otomatis',
-                          background: Colors.white24,
+                          isVenue
+                              ? 'Pencairan bulan ini'
+                              : 'Split bill otomatis',
+                          color: Colors.white,
+                          background: Colors.black.withValues(alpha: 0.2),
                         ),
-                        const SizedBox(height: 9),
+                        const SizedBox(height: 10),
                         Text(
                           isVenue ? 'Rp12.750.000' : 'Rp50.000',
                           style: const TextStyle(
-                            fontSize: 25,
+                            fontSize: 26,
                             fontWeight: FontWeight.w800,
-                            letterSpacing: -1.1,
+                            letterSpacing: -1.3,
                             height: 1,
-                            color: C.ink,
+                            color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 5),
+                        const SizedBox(height: 6),
                         Text(
                           isVenue
                               ? '128 booking · okupansi 78%'
                               : 'GOR C-Tra · 8 orang · 2 jam',
                           style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white.withValues(alpha: 0.78),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
                           ),
                         ),
                       ],
@@ -149,13 +157,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   Icon(
                     isVenue ? Icons.insights : Icons.groups_2_outlined,
-                    size: 34,
-                    color: Colors.white.withValues(alpha: 0.4),
+                    size: 38,
+                    color: Colors.white.withValues(alpha: 0.45),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 22),
             LabeledField(
               label: isVenue ? 'Email venue' : 'Email',
               controller: _email,
@@ -163,7 +171,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               keyboard: TextInputType.emailAddress,
               prefixIcon: Icons.alternate_email,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             LabeledField(
               label: 'Password',
               controller: _password,
@@ -171,14 +179,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               obscure: true,
               prefixIcon: Icons.lock_outline,
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 20),
             SebarButton(
               label: _register
                   ? (isVenue ? 'Daftarkan venue' : 'Buat akun')
                   : (isVenue ? 'Masuk dashboard venue' : 'Masuk'),
               onPressed: _submit,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Center(
               child: TextButton(
                 onPressed: () => setState(() => _register = !_register),
@@ -186,11 +194,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   _register
                       ? 'Sudah punya akun? Masuk'
                       : 'Belum punya akun? Daftar',
-                  style: const TextStyle(
-                    color: C.pink,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                  ),
                 ),
               ),
             ),
@@ -201,7 +204,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ? 'Akun venue tidak bisa join room pemain.'
                     : 'Mau kelola lapangan? Pilih Venue di atas.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11, color: C.faint),
+                style: T.caption,
               ),
             ),
           ],
@@ -228,17 +231,21 @@ class _RoleSwitch extends StatelessWidget {
               onTap: () => onPick(r),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 160),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13,
+                  vertical: 13,
+                ),
                 decoration: BoxDecoration(
                   color: role == r ? C.pink : C.surface,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: role == r ? C.pink : C.line),
+                  boxShadow: role == r ? C.cardShadow : null,
                 ),
                 child: Row(
                   children: [
                     Icon(
                       r.icon,
-                      size: 17,
+                      size: 19,
                       color: role == r ? Colors.white : C.muted,
                     ),
                     const SizedBox(width: 9),
@@ -251,7 +258,7 @@ class _RoleSwitch extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 15,
                               fontWeight: FontWeight.w800,
                               color: role == r ? Colors.white : C.ink,
                             ),
@@ -260,9 +267,9 @@ class _RoleSwitch extends StatelessWidget {
                           Text(
                             r == AccountRole.player ? 'Main' : 'Kelola',
                             style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                              color: role == r ? Colors.white70 : C.faint,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: role == r ? Colors.white : C.muted,
                             ),
                           ),
                         ],

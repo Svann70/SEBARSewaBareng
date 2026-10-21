@@ -185,11 +185,7 @@ class LobbyDetailScreen extends ConsumerWidget {
                     child: Text(
                       'Saya paham dana dikunci saat join dan aturan '
                       'pembatalan di atas berlaku.',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: C.muted,
-                        height: 1.4,
-                      ),
+                      style: T.small,
                     ),
                   ),
                 ],
@@ -220,7 +216,9 @@ class LobbyDetailScreen extends ConsumerWidget {
     secret.dispose();
     if (!context.mounted) return;
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
     final updated = ref
@@ -320,17 +318,15 @@ class _Hero extends StatelessWidget {
                                 : context.go('/home'),
                           ),
                           const Spacer(),
-                          _GlassButton(
-                            icon: Icons.ios_share,
-                            onTap: onShare,
-                          ),
+                          _GlassButton(icon: Icons.ios_share, onTap: onShare),
                         ],
                       ),
                       const SizedBox(height: 16),
                       Pill(
                         '${formatDate(lobby.start)} · '
                         '${formatTime(lobby.start)}',
-                        background: Colors.white24,
+                        color: Colors.white,
+                        background: Colors.black.withValues(alpha: 0.2),
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -339,7 +335,7 @@ class _Hero extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 23,
+                          fontSize: 24,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.8,
                           height: 1.15,
@@ -367,14 +363,17 @@ class _Hero extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(5),
                     decoration: const BoxDecoration(
-                      color: C.bg,
+                      color: C.surface,
                       shape: BoxShape.circle,
+                      boxShadow: C.cardShadow,
                     ),
                     child: QuotaRing(
                       joined: lobby.joined,
                       quota: lobby.quota,
                       size: 58,
-                      color: lobby.isFull ? C.orange : Colors.white,
+                      color: lobby.isFull ? C.amber : C.teal,
+                      foreground: C.ink,
+                      track: C.line,
                     ),
                   ),
                 ),
@@ -442,10 +441,11 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 38, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 40, 16, 16),
       decoration: BoxDecoration(
         color: C.surface,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: C.cardShadow,
       ),
       child: Column(
         children: [
@@ -453,7 +453,7 @@ class _SummaryCard extends StatelessWidget {
             children: [
               Pill(
                 lobby.sport.label,
-                background: lobby.sport.gradient.first.withValues(alpha: 0.18),
+                background: lobby.sport.gradient.first.withValues(alpha: 0.12),
                 color: lobby.sport.gradient.first,
                 icon: lobby.sport.icon,
               ),
@@ -509,15 +509,9 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: 7),
           Row(
             children: [
-              Text(
-                '${lobby.remaining} slot tersisa',
-                style: const TextStyle(fontSize: 10.5, color: C.muted),
-              ),
+              Text('${lobby.remaining} slot tersisa', style: T.caption),
               const Spacer(),
-              Text(
-                'Skor min ${lobby.minReliability}',
-                style: const TextStyle(fontSize: 10.5, color: C.muted),
-              ),
+              Text('Skor min ${lobby.minReliability}', style: T.caption),
             ],
           ),
         ],
@@ -527,11 +521,7 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _Meta extends StatelessWidget {
-  const _Meta({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  const _Meta({required this.icon, required this.label, required this.value});
 
   final IconData icon;
   final String label;
@@ -541,7 +531,7 @@ class _Meta extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, size: 16, color: C.muted),
+        Icon(icon, size: 17, color: C.muted),
         const SizedBox(height: 5),
         Text(
           value,
@@ -549,13 +539,13 @@ class _Meta extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
           style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
             color: C.ink,
           ),
         ),
-        const SizedBox(height: 1),
-        Text(label, style: const TextStyle(fontSize: 9.5, color: C.faint)),
+        const SizedBox(height: 2),
+        Text(label, style: T.caption),
       ],
     );
   }
@@ -622,8 +612,8 @@ class _PrivateCard extends StatelessWidget {
               child: Text(
                 'Bagikan',
                 style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
                   color: C.pink,
                 ),
               ),
@@ -668,10 +658,7 @@ class _JoinBar extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    joined ? 'Kamu ikut' : 'Skor kamu',
-                    style: const TextStyle(fontSize: 10, color: C.faint),
-                  ),
+                  Text(joined ? 'Kamu ikut' : 'Skor kamu', style: T.caption),
                   Row(
                     children: [
                       Text(
@@ -733,9 +720,11 @@ class _MemberRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: member.isMe ? C.mint : C.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: member.isMe ? C.mint : C.line),
+        color: member.isMe ? C.tealSoft : C.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: member.isMe ? C.teal.withValues(alpha: 0.35) : C.line,
+        ),
       ),
       child: Row(
         children: [
@@ -750,9 +739,9 @@ class _MemberRow extends StatelessWidget {
             child: Text(
               member.name.characters.first,
               style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 12.5,
-                color: C.greenDeep,
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+                color: C.tealDeep,
               ),
             ),
           ),
@@ -786,7 +775,7 @@ class _MemberRow extends StatelessWidget {
                     child: const Text(
                       'Host',
                       style: TextStyle(
-                        fontSize: 9,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: C.amber,
                       ),
@@ -824,11 +813,7 @@ class _PenaltyRules extends StatelessWidget {
               const Text('Aturan pembatalan', style: T.h3),
               const Spacer(),
               if (soon)
-                const Pill(
-                  'Zona denda',
-                  color: C.amber,
-                  background: C.butter,
-                ),
+                const Pill('Zona denda', color: C.amber, background: C.butter),
             ],
           ),
           const SizedBox(height: 10),
@@ -890,7 +875,7 @@ class _RuleLine extends StatelessWidget {
               detail,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11.5, color: C.muted),
+              style: T.caption,
             ),
           ),
         ],
@@ -907,8 +892,8 @@ class _PenaltyMini extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: C.bg,
-        borderRadius: BorderRadius.circular(14),
+        color: C.surfaceAlt,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: C.line),
       ),
       child: const Column(
@@ -917,7 +902,7 @@ class _PenaltyMini extends StatelessWidget {
           Text(
             'Konsekuensi batal',
             style: TextStyle(
-              fontSize: 11.5,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
               color: C.ink,
             ),
@@ -957,7 +942,7 @@ class _BillRow extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 12.5,
+                fontSize: 12,
                 color: muted ? C.muted : C.ink,
                 fontWeight: FontWeight.w500,
               ),
@@ -966,7 +951,7 @@ class _BillRow extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontSize: 12.5,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
               color: muted ? C.muted : C.ink,
             ),

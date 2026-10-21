@@ -101,11 +101,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> {
                       itemBuilder: (_, i) => _Message(message: messages[i]),
                     ),
             ),
-            _Composer(
-              channel: channel,
-              controller: _text,
-              onSend: _send,
-            ),
+            _Composer(channel: channel, controller: _text, onSend: _send),
           ],
         ),
       ),
@@ -178,7 +174,7 @@ class _Message extends StatelessWidget {
                 child: Text(
                   message.author,
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: C.muted,
                   ),
@@ -190,7 +186,7 @@ class _Message extends StatelessWidget {
                 color: mine ? null : C.surface,
                 gradient: mine
                     ? const LinearGradient(
-                        colors: [Color(0xFFFF7A93), C.pinkDeep],
+                        colors: C.pinkPanel,
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       )
@@ -214,10 +210,7 @@ class _Message extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
-              child: Text(
-                formatTime(message.at),
-                style: const TextStyle(fontSize: 10, color: C.faint),
-              ),
+              child: Text(formatTime(message.at), style: T.caption),
             ),
           ],
         ),
@@ -255,7 +248,7 @@ class _Composer extends StatelessWidget {
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => onSend(),
                 style: const TextStyle(
-                  fontSize: 13.5,
+                  fontSize: 13,
                   fontWeight: FontWeight.w500,
                   color: C.ink,
                 ),
@@ -293,7 +286,11 @@ class _Composer extends StatelessWidget {
                 child: const SizedBox(
                   width: 46,
                   height: 46,
-                  child: Icon(Icons.arrow_upward, size: 20, color: Colors.white),
+                  child: Icon(
+                    Icons.arrow_upward,
+                    size: 20,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),

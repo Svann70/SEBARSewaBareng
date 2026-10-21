@@ -8,11 +8,24 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../data/state.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final wallet = ref.watch(walletProvider);
     final filter = ref.watch(filterProvider);
     final lobbies = ref.watch(filteredLobbiesProvider);
@@ -27,61 +40,61 @@ class HomeScreen extends ConsumerWidget {
           await Future<void>.delayed(const Duration(milliseconds: 500));
         },
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: kScreenPad,
           children: [
             _Greeting(score: me.score),
             const SizedBox(height: 16),
-            SportPanel(
-              gradient: const [Color(0xFFFF7A93), C.pinkDeep],
-              height: 146,
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Pill('Saldo tersedia', background: Colors.white24),
-                        const SizedBox(height: 10),
-                        Text(
-                          rupiah(wallet.available),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -1.2,
-                            height: 1,
-                            color: C.ink,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Terkunci ${rupiah(wallet.held)}',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white.withValues(alpha: 0.8),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _HeroStat(value: '${me.score}', label: 'Skor'),
-                      const SizedBox(height: 10),
-                      _HeroStat(value: '${bookings.length}', label: 'Tiket'),
-                    ],
-                  ),
-                ],
-              ),
+            SearchField(
+              controller: _search,
+              onChanged: (value) =>
+                  ref.read(filterProvider.notifier).setQuery(value),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            _SaldoPanel(wallet: wallet, bookings: bookings.length),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: CountCard(
+                    icon: Icons.groups_outlined,
+                    value: '${lobbies.length}',
+                    label: 'Room',
+                    color: C.teal,
+                    tint: C.tealSoft,
+                  ),
+                ),
+                Expanded(
+                  child: CountCard(
+                    icon: Icons.confirmation_number_outlined,
+                    value: '${bookings.length}',
+                    label: 'Tiket',
+                    color: C.pink,
+                    tint: C.pinkSoft,
+                  ),
+                ),
+                Expanded(
+                  child: CountCard(
+                    icon: Icons.emoji_events_outlined,
+                    value: '${me.score}',
+                    label: 'Skor',
+                    color: C.amber,
+                    tint: C.amberSoft,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            TrendChartCard(
+              title: 'Progres skor',
+              subtitle: '6 bulan terakhir',
+              headline: '${me.score}%',
+              badge: '+22 poin',
+              values: [
+                for (final n in [78, 84, 80, 88, 90, me.score]) n.toDouble(),
+              ],
+              labels: const ['Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt'],
+            ),
+            const SizedBox(height: 18),
             _SportCircles(active: filter.sport),
             const SizedBox(height: 6),
             _CityLine(
@@ -89,7 +102,7 @@ class HomeScreen extends ConsumerWidget {
               count: lobbies.length,
               onTap: () => _pickCity(context, ref, filter.city),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             SectionHeader(
               'Room tersedia',
               action: 'Kode undangan',
@@ -99,8 +112,12 @@ class HomeScreen extends ConsumerWidget {
             if (lobbies.isEmpty)
               EmptyState(
                 icon: Icons.groups_outlined,
-                title: 'Belum ada room di kotamu',
-                message: 'Buat room pertama, lalu bagikan sandinya ke teman.',
+                title: filter.query.isEmpty
+                    ? 'Belum ada room di kotamu'
+                    : 'Room tidak ditemukan',
+                message: filter.query.isEmpty
+                    ? 'Buat room pertama, lalu bagikan sandinya ke teman.'
+                    : 'Coba kata kunci lain atau ubah filter olahraga.',
                 action: GhostButton(
                   label: 'Buat room',
                   icon: Icons.add,
@@ -109,72 +126,98 @@ class HomeScreen extends ConsumerWidget {
               )
             else
               for (var i = 0; i < lobbies.length; i++)
-                _TimelineRow(
-                  lobby: lobbies[i],
-                  first: i == 0,
-                  last: i == lobbies.length - 1,
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: RankRow(
+                    rank: i + 1,
+                    title: lobbies[i].title,
+                    subtitle:
+                        '${lobbies[i].venue} · '
+                        '${formatTime(lobbies[i].start)}–'
+                        '${formatTime(lobbies[i].end)}',
+                    value: lobbies[i].isFull
+                        ? 'Penuh'
+                        : '${lobbies[i].remaining} slot',
+                    background: _roomTint(i),
+                    avatars: [for (final m in lobbies[i].members) m.name],
+                    onTap: () => context.push('/lobby/${lobbies[i].id}'),
+                  ),
                 ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             SectionHeader(
               'Tiket berikutnya',
               action: 'Semua',
               onTap: () => context.go('/home'),
             ),
             const SizedBox(height: 10),
-            for (final b in bookings.take(2))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: SurfaceCard(
-                  radius: 18,
-                  onTap: () => context.push('/ticket/${b.id}'),
-                  child: Row(
-                    children: [
-                      _SportAvatar(sport: b.sport),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              b.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: T.h3,
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              '${b.venue} · ${formatDate(b.start)} '
-                              '${formatTime(b.start)}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: T.small,
-                            ),
-                          ],
+            if (bookings.isEmpty)
+              const EmptyState(
+                icon: Icons.confirmation_number_outlined,
+                title: 'Belum ada tiket',
+                message: 'Tiket terbit otomatis saat kuota room terpenuhi.',
+              )
+            else
+              for (final b in bookings.take(2))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: SurfaceCard(
+                    radius: 22,
+                    onTap: () => context.push('/ticket/${b.id}'),
+                    child: Row(
+                      children: [
+                        _SportAvatar(sport: b.sport),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                b.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: T.h3,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${b.venue} · ${formatDate(b.start)} '
+                                '${formatTime(b.start)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: T.small,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: C.surfaceAlt,
-                          borderRadius: BorderRadius.circular(10),
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: C.pinkSoft,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.qr_code_2,
+                            size: 20,
+                            color: C.pinkDeep,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.qr_code_2,
-                          size: 18,
-                          color: C.ink,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
           ],
         ),
       ),
     );
   }
+
+  static Color _roomTint(int i) => switch (i % 4) {
+    0 => C.pinkSoft,
+    2 => C.amberSoft,
+    3 => C.tealSoft,
+    _ => C.surface,
+  };
 
   Future<void> _pickCity(
     BuildContext context,
@@ -190,17 +233,16 @@ class HomeScreen extends ConsumerWidget {
           for (final c in cities)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              visualDensity: VisualDensity.compact,
               title: Text(
                 c,
                 style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
+                  fontWeight: c == current ? FontWeight.w800 : FontWeight.w600,
+                  fontSize: 15,
                   color: c == current ? C.pink : C.ink,
                 ),
               ),
               trailing: c == current
-                  ? const Icon(Icons.check, color: C.pink, size: 18)
+                  ? const Icon(Icons.check_circle, color: C.pink, size: 20)
                   : null,
               onTap: () => Navigator.pop(context, c),
             ),
@@ -241,7 +283,7 @@ class HomeScreen extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Masuk', style: TextStyle(color: C.pink)),
+            child: const Text('Masuk'),
           ),
         ],
       ),
@@ -271,17 +313,9 @@ class _Greeting extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Halo, Raka',
-                style: TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.6,
-                  color: C.ink,
-                ),
-              ),
+              const Text('Hai, Raka', style: T.h1),
               const SizedBox(height: 2),
-              Text('Siap main minggu ini?', style: T.small),
+              Text(formatLongDate(DateTime.now()), style: T.small),
             ],
           ),
         ),
@@ -294,19 +328,21 @@ class _Greeting extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Container(
-          width: 38,
-          height: 38,
-          decoration: const BoxDecoration(
-            color: C.butter,
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: C.pinkFill,
             shape: BoxShape.circle,
+            border: Border.all(color: C.surface, width: 3),
+            boxShadow: C.cardShadow,
           ),
           alignment: Alignment.center,
           child: const Text(
             'R',
             style: TextStyle(
-              color: C.ink,
+              color: Colors.white,
               fontWeight: FontWeight.w800,
-              fontSize: 15,
+              fontSize: 15.5,
             ),
           ),
         ),
@@ -315,33 +351,106 @@ class _Greeting extends StatelessWidget {
   }
 }
 
-class _HeroStat extends StatelessWidget {
-  const _HeroStat({required this.value, required this.label});
+/// Panel saldo pink pekat — teks putih aman (kontras ≥ 4,8:1).
+class _SaldoPanel extends StatelessWidget {
+  const _SaldoPanel({required this.wallet, required this.bookings});
+
+  final Wallet wallet;
+  final int bookings;
+
+  @override
+  Widget build(BuildContext context) {
+    return SportPanel(
+      gradient: C.pinkPanel,
+      radius: 30,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Pill(
+                    'Saldo tersedia',
+                    color: Colors.white,
+                    background: Colors.black.withValues(alpha: 0.2),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              DarkPillButton(
+                label: 'Top up',
+                icon: Icons.add,
+                height: 38,
+                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Buka tab Dompet untuk top up.'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            rupiah(wallet.available),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: T.numberLg.copyWith(color: Colors.white),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _HeroMeta(value: rupiah(wallet.held), label: 'Terkunci'),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _HeroMeta(value: '$bookings', label: 'Tiket aktif'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroMeta extends StatelessWidget {
+  const _HeroMeta({required this.value, required this.label});
 
   final String value;
   final String label;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 19,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.6,
-            height: 1,
-            color: C.ink,
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
           ),
         ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10.5,
-            fontWeight: FontWeight.w500,
-            color: Colors.white.withValues(alpha: 0.75),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
         ),
       ],
@@ -349,8 +458,7 @@ class _HeroStat extends StatelessWidget {
   }
 }
 
-/// Filter olahraga berbentuk lingkaran — bentuk lain dari chip, supaya
-/// halaman tidak monoton kotak.
+/// Filter olahraga berbentuk lingkaran.
 class _SportCircles extends ConsumerWidget {
   const _SportCircles({this.active});
 
@@ -360,14 +468,14 @@ class _SportCircles extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(filterProvider.notifier);
     return SizedBox(
-      height: 74,
+      height: 84,
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
           _SportCircle(
             label: 'Semua',
-            icon: Icons.apps,
-            gradient: const [Color(0xFF3A3A48), Color(0xFF23232C)],
+            icon: Icons.grid_view_rounded,
+            color: C.tealFill,
             selected: active == null,
             onTap: () => notifier.setSport(null),
           ),
@@ -375,7 +483,7 @@ class _SportCircles extends ConsumerWidget {
             _SportCircle(
               label: s.label,
               icon: s.icon,
-              gradient: s.gradient,
+              color: s.gradient.first,
               selected: active == s,
               onTap: () => notifier.setSport(active == s ? null : s),
             ),
@@ -389,58 +497,55 @@ class _SportCircle extends StatelessWidget {
   const _SportCircle({
     required this.label,
     required this.icon,
-    required this.gradient,
+    required this.color,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
   final IconData icon;
-  final List<Color> gradient;
+  final Color color;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(right: 14),
+      padding: const EdgeInsets.only(right: 12),
       child: GestureDetector(
         onTap: onTap,
         child: SizedBox(
-          width: 60,
+          width: 64,
           child: Column(
             children: [
               AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                width: 48,
-                height: 48,
+                duration: const Duration(milliseconds: 180),
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: selected
-                      ? LinearGradient(
-                          colors: gradient,
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
-                      : null,
-                  color: selected ? null : C.surface,
-                  border: Border.all(color: selected ? Colors.white24 : C.line),
+                  color: selected ? color : C.surface,
+                  border: Border.all(
+                    color: selected ? color : C.line,
+                    width: selected ? 0 : 1,
+                  ),
+                  boxShadow: selected ? C.cardShadow : null,
                 ),
                 child: Icon(
                   icon,
-                  size: 21,
-                  color: selected ? Colors.white : C.muted,
+                  size: 23,
+                  color: selected ? Colors.white : color,
                 ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 6),
               Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w600,
-                  color: selected ? C.ink : C.faint,
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  color: selected ? C.ink : C.muted,
                 ),
               ),
             ],
@@ -451,7 +556,7 @@ class _SportCircle extends StatelessWidget {
   }
 }
 
-/// Baris kota tanpa kotak: hanya pin, nama, dan jumlah room.
+/// Baris kota: pin, nama, jumlah room, aksi ubah.
 class _CityLine extends StatelessWidget {
   const _CityLine({
     required this.city,
@@ -468,281 +573,46 @@ class _CityLine extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: SizedBox(
-        height: 36,
+      child: Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(
           children: [
-            const Icon(Icons.location_on_outlined, size: 14, color: C.pink),
+            const Icon(Icons.location_on_outlined, size: 18, color: C.pink),
             const SizedBox(width: 6),
-            Text(
-              city,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: C.ink,
+            Expanded(
+              child: Text(
+                city,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: C.ink,
+                ),
               ),
             ),
             const SizedBox(width: 6),
-            Text(
-              '· $count room',
-              style: const TextStyle(fontSize: 11.5, color: C.faint),
+            Flexible(
+              child: Text(
+                '· $count room',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: T.caption,
+              ),
             ),
-            const Spacer(),
-            const Text(
+            const SizedBox(width: 8),
+            Text(
               'Ubah',
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
                 color: C.pink,
               ),
             ),
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Satu baris pada linimasa room: penanda tanggal di kiri, kartu di kanan.
-/// Bentuk mengikuti referensi AppDesign3.
-class _TimelineRow extends StatelessWidget {
-  const _TimelineRow({
-    required this.lobby,
-    required this.first,
-    required this.last,
-  });
-
-  final Lobby lobby;
-  final bool first;
-  final bool last;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _RailPainter(first: first, last: last),
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 44,
-              child: Column(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: first ? C.pink : C.bg,
-                      border: Border.all(
-                        color: first ? C.pink : C.line,
-                        width: 1.4,
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '${lobby.start.day}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            height: 1,
-                            color: first ? Colors.white : C.ink,
-                          ),
-                        ),
-                        Text(
-                          formatDate(lobby.start).split(', ').last.split(' ').last,
-                          style: TextStyle(
-                            fontSize: 8,
-                            height: 1.2,
-                            fontWeight: FontWeight.w600,
-                            color: first ? Colors.white70 : C.faint,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: _RoomRow(lobby: lobby)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RailPainter extends CustomPainter {
-  _RailPainter({required this.first, required this.last});
-
-  final bool first;
-  final bool last;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = C.line
-      ..strokeWidth = 1.4
-      ..strokeCap = StrokeCap.round;
-    const x = 19.0;
-    var y = first ? 42.0 : 0.0;
-    final end = last ? size.height - 12 : size.height;
-    while (y < end) {
-      canvas.drawLine(Offset(x, y), Offset(x, (y + 4).clamp(0, end)), paint);
-      y += 9;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _RailPainter old) =>
-      old.first != first || old.last != last;
-}
-
-class _RoomRow extends StatelessWidget {
-  const _RoomRow({required this.lobby});
-
-  final Lobby lobby;
-
-  @override
-  Widget build(BuildContext context) {
-    final tint = lobby.sport.gradient.first;
-    return Material(
-      color: C.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () => context.push('/lobby/${lobby.id}'),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: tint.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(lobby.sport.icon, size: 19, color: tint),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            lobby.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: T.h3,
-                          ),
-                        ),
-                        if (lobby.access != LobbyAccess.open)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 4),
-                            child: Icon(
-                              lobby.access.icon,
-                              size: 13,
-                              color: C.faint,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${lobby.venue} · ${formatTime(lobby.start)}–'
-                      '${formatTime(lobby.end)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: T.small,
-                    ),
-                    const SizedBox(height: 9),
-                    Row(
-                      children: [
-                        Text(
-                          rupiah(lobby.pricePerPerson),
-                          style: const TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.4,
-                            color: C.ink,
-                          ),
-                        ),
-                        const Text(
-                          ' /orang',
-                          style: TextStyle(fontSize: 10, color: C.faint),
-                        ),
-                        const Spacer(),
-                        Flexible(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerRight,
-                            child: _QuotaDots(
-                              joined: lobby.joined,
-                              quota: lobby.quota,
-                              full: lobby.isFull,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Kuota sebagai titik-titik, bukan progress bar — variasi bentuk.
-class _QuotaDots extends StatelessWidget {
-  const _QuotaDots({
-    required this.joined,
-    required this.quota,
-    required this.full,
-  });
-
-  final int joined;
-  final int quota;
-  final bool full;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = full ? C.orange : C.green;
-    return Row(
-      children: [
-        for (var i = 0; i < quota.clamp(0, 12); i++)
-          Container(
-            width: 5,
-            height: 5,
-            margin: const EdgeInsets.only(right: 2.5),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: i < joined ? color : C.line,
-            ),
-          ),
-        const SizedBox(width: 4),
-        Text(
-          '$joined/$quota',
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: C.muted,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -756,14 +626,14 @@ class _SportAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final tint = sport.gradient.first;
     return Container(
-      width: 44,
-      height: 44,
+      width: 46,
+      height: 46,
       decoration: BoxDecoration(
-        color: tint.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(13),
+        color: tint.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(15),
       ),
       alignment: Alignment.center,
-      child: Icon(sport.icon, size: 21, color: tint),
+      child: Icon(sport.icon, size: 22, color: tint),
     );
   }
 }

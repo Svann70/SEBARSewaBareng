@@ -17,34 +17,41 @@ class CreateLobbyScreen extends ConsumerStatefulWidget {
 
 class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
   final _title = TextEditingController(text: 'Badminton Sabtu Pagi');
-  final _venue = TextEditingController(text: 'GOR C-Tra Arena');
-  final _court = TextEditingController(text: 'Lapangan 3');
 
   Sport _sport = Sport.badminton;
-  String _city = 'Bandung';
+  VenueInfo _venue = venues.first;
+  int _court = 1;
+  int _hour = 8;
+  int _hours = 2;
+  DateTime _date = DateTime.now().add(const Duration(days: 2));
   int _quota = 8;
-  int _price = 400000;
   int _minScore = 70;
-  DateTime _start = DateTime.now().add(const Duration(days: 2, hours: 2));
   LobbyAccess _access = LobbyAccess.open;
   final _secret = TextEditingController();
   final _inviteCode =
       'SEB-${(DateTime.now().millisecondsSinceEpoch % 9000 + 1000)}';
 
+  DateTime get _start => DateTime(_date.year, _date.month, _date.day, _hour);
+
+  /// Harga mengikuti tarif venue per jam: weekday atau weekend.
+  int get _price => _venue.rateOn(_date) * _hours;
+
+  String get _dayType => _venue.isWeekend(_date) ? 'Weekend' : 'Weekday';
+
+  int get _lastHour => _venue.closeHour - _hours;
+
   @override
   void dispose() {
     _title.dispose();
-    _venue.dispose();
-    _court.dispose();
     _secret.dispose();
     super.dispose();
   }
 
   void _submit() {
-    if (_title.text.trim().isEmpty || _venue.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Judul dan venue wajib diisi.')),
-      );
+    if (_title.text.trim().isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Judul room wajib diisi.')));
       return;
     }
     if (_access == LobbyAccess.password && _secret.text.trim().length < 4) {
@@ -58,9 +65,9 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
         .create(
           title: _title.text.trim(),
           sport: _sport,
-          venue: _venue.text.trim(),
-          city: _city,
-          court: _court.text.trim().isEmpty ? 'Lapangan 1' : _court.text.trim(),
+          venue: _venue.name,
+          city: _venue.city,
+          court: 'Lapangan $_court',
           start: _start,
           priceTotal: _price,
           quota: _quota,
@@ -93,276 +100,369 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
       body: SafeArea(
         bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: kScreenPad,
           children: [
             const RoundBackHeader(title: 'Buat room'),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             const Text('Isi slot,\nbagi rata.', style: T.display),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             const Text(
-              'Harga per orang dihitung database, bukan perkiraan klien.',
+              'Pilih venue dan jam. Harga per orang dihitung otomatis '
+              'dari tarif lapangan.',
               style: T.body,
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 20),
             SportPanel(
-              gradient: [Color(0xFF9B8CFF), Color(0xFF6A5AE0)],
-              padding: const EdgeInsets.all(16),
+              gradient: C.pinkPanel,
+              radius: 30,
+              padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Pill('Harga per orang', background: Colors.white24),
-                  const SizedBox(height: 10),
+                  Pill(
+                    'Harga per orang',
+                    color: Colors.white,
+                    background: Colors.black.withValues(alpha: 0.2),
+                  ),
+                  const SizedBox(height: 12),
                   Text(
                     rupiah(perPerson),
                     style: const TextStyle(
-                      fontSize: 30,
+                      fontSize: 34,
                       fontWeight: FontWeight.w800,
-                      letterSpacing: -1.4,
+                      letterSpacing: -1.8,
                       height: 1,
-                      color: C.ink,
+                      color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 10),
                   Text(
                     '${rupiah(_price)} ÷ $_quota orang'
-                    '${surplus > 0 ? ' · surplus ${rupiah(surplus)} ke venue' : ''}',
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white70,
+                    '${surplus > 0 ? ' · pembulatan ${rupiah(surplus)} diteruskan ke venue' : ''}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      height: 1.45,
+                      color: Colors.white,
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 20),
-            const _FieldLabel('Olahraga'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final s in Sport.values)
-                  _SelectChip(
-                    label: s.label,
-                    icon: s.icon,
-                    selected: _sport == s,
-                    onTap: () => setState(() => _sport = s),
+            SurfaceCard(
+              radius: 26,
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Detail lapangan', style: T.h3),
+                  const SizedBox(height: 14),
+                  const _FieldLabel('Olahraga'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final s in Sport.values)
+                        _SelectChip(
+                          label: s.label,
+                          icon: s.icon,
+                          selected: _sport == s,
+                          onTap: () => setState(() => _sport = s),
+                        ),
+                    ],
                   ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            const _FieldLabel('Akses room'),
-            const SizedBox(height: 8),
-            for (final a in LobbyAccess.values)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _AccessOption(
-                  access: a,
-                  selected: _access == a,
-                  onTap: () => setState(() => _access = a),
-                ),
-              ),
-            if (_access == LobbyAccess.password) ...[
-              const SizedBox(height: 4),
-              LabeledField(
-                label: 'Sandi room',
-                controller: _secret,
-                hint: 'Minimal 4 karakter',
-                obscure: true,
-                prefixIcon: Icons.lock_outline,
-              ),
-            ],
-            if (_access == LobbyAccess.link)
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: C.surface,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.link, size: 17, color: C.muted),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Kode undangan',
-                            style: TextStyle(fontSize: 10.5, color: C.muted),
+                  const SizedBox(height: 18),
+                  const _FieldLabel('Venue'),
+                  const SizedBox(height: 8),
+                  _DropdownBox<VenueInfo>(
+                    value: _venue,
+                    items: [
+                      for (final v in venues)
+                        DropdownMenuItem(
+                          value: v,
+                          child: Text(
+                            v.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          Text(
-                            _inviteCode,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.8,
-                              color: C.ink,
+                        ),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() {
+                        _venue = v;
+                        if (_court > v.courts) _court = v.courts;
+                        if (_hour > _lastHour) _hour = _lastHour;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${_venue.city} · ${_venue.rateLabel}',
+                    style: T.caption,
+                  ),
+                  const SizedBox(height: 18),
+                  const _FieldLabel('Lapangan'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (var c = 1; c <= _venue.courts; c++)
+                        _SelectChip(
+                          label: 'Lapangan $c',
+                          selected: _court == c,
+                          onTap: () => setState(() => _court = c),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  const _FieldLabel('Tanggal'),
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: _pickDate,
+                    child: Container(
+                      height: 54,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: C.surfaceAlt,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.event_outlined,
+                            size: 19,
+                            color: C.teal,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '${formatLongDate(_date)} · $_dayType',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: C.ink,
+                              ),
                             ),
+                          ),
+                          const Icon(
+                            Icons.expand_more,
+                            size: 20,
+                            color: C.muted,
                           ),
                         ],
                       ),
                     ),
-                    const Text(
-                      'Bagikan',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                        color: C.pink,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 16),
-            LabeledField(label: 'Judul room', controller: _title),
-            const SizedBox(height: 12),
-            LabeledField(label: 'Venue', controller: _venue),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: LabeledField(label: 'Lapangan', controller: _court),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _FieldLabel('Kota'),
-                      const SizedBox(height: 6),
-                      Container(
-                        height: 50,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        decoration: BoxDecoration(
-                          color: C.surface,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: C.line),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _city,
-                            isExpanded: true,
-                            dropdownColor: C.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            icon: const Icon(
-                              Icons.expand_more,
-                              size: 18,
-                              color: C.muted,
+                  ),
+                  const SizedBox(height: 18),
+                  _FieldLabel('Jam mulai · durasi $_hours jam'),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 46,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _lastHour - _venue.openHour + 1,
+                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) {
+                        final h = _venue.openHour + i;
+                        final active = h == _hour;
+                        return GestureDetector(
+                          onTap: () => setState(() => _hour = h),
+                          child: Container(
+                            width: 62,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: active ? C.teal : C.surfaceAlt,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: active ? C.teal : C.line,
+                              ),
                             ),
-                            style: const TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                              color: C.ink,
+                            child: Text(
+                              '${h.toString().padLeft(2, '0')}:00',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: active ? Colors.white : C.ink,
+                              ),
                             ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'Bandung',
-                                child: Text('Bandung'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'Jakarta',
-                                child: Text('Jakarta'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'Surabaya',
-                                child: Text('Surabaya'),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _city = v ?? 'Bandung'),
                           ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final h in const [1, 2, 3])
+                        _SelectChip(
+                          label: '$h jam',
+                          selected: _hours == h,
+                          onTap: () => setState(() {
+                            _hours = h;
+                            if (_hour > _venue.closeHour - h) {
+                              _hour = _venue.closeHour - h;
+                            }
+                          }),
                         ),
-                      ),
                     ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: C.tealSoft,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.sell_outlined,
+                          size: 18,
+                          color: C.teal,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '$_dayType · ${rupiah(_venue.rateOn(_date))}/jam '
+                            '× $_hours jam = ${rupiah(_price)}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              height: 1.45,
+                              color: C.tealDeep,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            const _FieldLabel('Mulai'),
-            const SizedBox(height: 8),
-            GestureDetector(
-              onTap: _pickStart,
-              child: Container(
-                height: 50,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
-                  color: C.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: C.line),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.event_outlined, size: 17, color: C.green),
-                    const SizedBox(width: 10),
-                    Text(
-                      '${formatDate(_start)} · ${formatTime(_start)}',
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: C.ink,
+            const SizedBox(height: 14),
+            SurfaceCard(
+              radius: 26,
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Room & peserta', style: T.h3),
+                  const SizedBox(height: 14),
+                  LabeledField(
+                    label: 'Judul room',
+                    controller: _title,
+                    textCapitalization: TextCapitalization.words,
+                    prefixIcon: Icons.edit_outlined,
+                  ),
+                  const SizedBox(height: 16),
+                  _SliderField(
+                    label: 'Kuota peserta',
+                    value: '$_quota orang',
+                    min: 2,
+                    max: 30,
+                    divisions: 28,
+                    current: _quota.toDouble(),
+                    onChanged: (v) => setState(() => _quota = v.round()),
+                  ),
+                  _SliderField(
+                    label: 'Skor minimum',
+                    value: '$_minScore',
+                    min: 0,
+                    max: 100,
+                    divisions: 20,
+                    current: _minScore.toDouble(),
+                    onChanged: (v) => setState(() => _minScore = v.round()),
+                  ),
+                  const SizedBox(height: 4),
+                  const _FieldLabel('Akses room'),
+                  const SizedBox(height: 10),
+                  for (final a in LobbyAccess.values)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _AccessOption(
+                        access: a,
+                        selected: _access == a,
+                        onTap: () => setState(() => _access = a),
                       ),
                     ),
-                    const Spacer(),
-                    const Icon(
-                      Icons.chevron_right,
-                      size: 18,
-                      color: C.muted,
+                  if (_access == LobbyAccess.password) ...[
+                    const SizedBox(height: 4),
+                    LabeledField(
+                      label: 'Sandi room',
+                      controller: _secret,
+                      hint: 'Minimal 4 karakter',
+                      obscure: true,
+                      prefixIcon: Icons.lock_outline,
                     ),
                   ],
-                ),
+                  if (_access == LobbyAccess.link)
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: C.surfaceAlt,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.link, size: 18, color: C.purple),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Kode undangan', style: T.caption),
+                                Text(
+                                  _inviteCode,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.8,
+                                    color: C.ink,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Pill(
+                            'Bagikan',
+                            color: C.pinkDeep,
+                            background: C.pinkSoft,
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 18),
-            _SliderField(
-              label: 'Kuota peserta',
-              value: '$_quota orang',
-              min: 2,
-              max: 30,
-              current: _quota.toDouble(),
-              onChanged: (v) => setState(() => _quota = v.round()),
-            ),
-            _SliderField(
-              label: 'Harga lapangan',
-              value: rupiah(_price),
-              min: 50000,
-              max: 1500000,
-              divisions: 29,
-              current: _price.toDouble(),
-              onChanged: (v) =>
-                  setState(() => _price = (v / 50000).round() * 50000),
-            ),
-            _SliderField(
-              label: 'Skor minimum',
-              value: '$_minScore',
-              min: 0,
-              max: 100,
-              divisions: 20,
-              current: _minScore.toDouble(),
-              onChanged: (v) => setState(() => _minScore = v.round()),
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: C.butter,
-                borderRadius: BorderRadius.circular(14),
+                color: C.amberSoft,
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.lock_clock, size: 16, color: C.amber),
-                  const SizedBox(width: 9),
+                  const Icon(Icons.lock_clock, size: 18, color: C.amber),
+                  const SizedBox(width: 10),
                   const Expanded(
                     child: Text(
-                      'Join ditutup 6 jam sebelum mulai. Kuota tidak penuh = '
-                      'hold dilepas 100%.',
+                      'Join ditutup 6 jam sebelum mulai. Bila kuota tidak '
+                      'penuh, dana yang dikunci dilepas penuh.',
                       style: TextStyle(
-                        fontSize: 11.5,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                         color: C.amber,
-                        height: 1.4,
+                        height: 1.45,
                       ),
                     ),
                   ),
@@ -371,14 +471,15 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
             ),
             const SizedBox(height: 16),
             SebarButton(
-              label: 'Buat room · ${rupiah(perPerson)} dikunci',
+              label: 'Buat room · ${rupiah(perPerson)}/orang',
               onPressed: _submit,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             const Center(
               child: Text(
                 'Sebagai host kamu ikut menanggung 1 porsi.',
                 style: T.small,
+                textAlign: TextAlign.center,
               ),
             ),
           ],
@@ -387,28 +488,56 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     );
   }
 
-  Future<void> _pickStart() async {
+  Future<void> _pickDate() async {
     final date = await showDatePicker(
       context: context,
-      initialDate: _start,
+      initialDate: _date,
       firstDate: DateTime.now().add(const Duration(days: 1)),
       lastDate: DateTime.now().add(const Duration(days: 30)),
     );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(hour: _start.hour, minute: 0),
+    if (date == null) return;
+    setState(() => _date = date);
+  }
+}
+
+class _DropdownBox<V> extends StatelessWidget {
+  const _DropdownBox({
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
+
+  final V value;
+  final List<DropdownMenuItem<V>> items;
+  final ValueChanged<V?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 54,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: C.surfaceAlt,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: C.line),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<V>(
+          value: value,
+          isExpanded: true,
+          dropdownColor: C.surface,
+          borderRadius: BorderRadius.circular(18),
+          icon: const Icon(Icons.expand_more, size: 20, color: C.muted),
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: C.ink,
+          ),
+          items: items,
+          onChanged: onChanged,
+        ),
+      ),
     );
-    if (!mounted) return;
-    setState(() {
-      _start = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time?.hour ?? _start.hour,
-        0,
-      );
-    });
   }
 }
 
@@ -426,23 +555,26 @@ class _AccessOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: C.surface,
-      borderRadius: BorderRadius.circular(16),
+      color: selected ? C.pinkSoft : C.surfaceAlt,
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: selected ? C.pink : C.line),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? C.pink : C.line,
+              width: selected ? 1.4 : 1,
+            ),
           ),
           child: Row(
             children: [
               Icon(
                 access.icon,
-                size: 17,
-                color: selected ? C.pink : C.muted,
+                size: 19,
+                color: selected ? C.pinkDeep : C.muted,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -452,12 +584,12 @@ class _AccessOption extends StatelessWidget {
                     Text(
                       access.label,
                       style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
                         color: C.ink,
                       ),
                     ),
-                    const SizedBox(height: 1),
+                    const SizedBox(height: 2),
                     Text(access.hint, style: T.small),
                   ],
                 ),
@@ -465,7 +597,7 @@ class _AccessOption extends StatelessWidget {
               const SizedBox(width: 8),
               Icon(
                 selected ? Icons.radio_button_checked : Icons.radio_button_off,
-                size: 18,
+                size: 20,
                 color: selected ? C.pink : C.faint,
               ),
             ],
@@ -483,14 +615,7 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        color: C.muted,
-      ),
-    );
+    return Text(text, style: T.label);
   }
 }
 
@@ -510,13 +635,13 @@ class _SelectChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? C.pink : C.surface,
+      color: selected ? C.pink : C.surfaceAlt,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: selected ? C.pink : C.line),
@@ -525,13 +650,13 @@ class _SelectChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 14, color: selected ? Colors.white : C.muted),
+                Icon(icon, size: 16, color: selected ? Colors.white : C.muted),
                 const SizedBox(width: 6),
               ],
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: selected ? Colors.white : C.ink,
                 ),
@@ -570,16 +695,13 @@ class _SliderField extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12, color: C.muted),
-            ),
+            Text(label, style: T.small),
             const Spacer(),
             Text(
               value,
               style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
                 color: C.ink,
               ),
             ),

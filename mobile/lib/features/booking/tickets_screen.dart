@@ -16,17 +16,9 @@ class TicketsScreen extends ConsumerWidget {
     return SafeArea(
       bottom: false,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: kScreenPad,
         children: [
-          const Text(
-            'Tiket saya',
-            style: TextStyle(
-              fontSize: 21,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.6,
-              color: C.ink,
-            ),
-          ),
+          const Text('Tiket saya', style: T.h1),
           const SizedBox(height: 2),
           const Text(
             'Satu QR per peserta, hanya bisa discan sekali.',
@@ -73,17 +65,17 @@ class _TicketCard extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 46,
+                  height: 46,
                   decoration: BoxDecoration(
-                    color: C.surfaceAlt,
-                    borderRadius: BorderRadius.circular(14),
+                    color: booking.sport.gradient.first.withValues(alpha: 0.13),
+                    borderRadius: BorderRadius.circular(15),
                   ),
                   alignment: Alignment.center,
                   child: Icon(
                     booking.sport.icon,
-                    size: 21,
-                    color: C.ink,
+                    size: 22,
+                    color: booking.sport.gradient.first,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -109,9 +101,9 @@ class _TicketCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Pill(
-                  booking.checkedIn ? 'Checked in' : 'Confirmed',
-                  color: booking.checkedIn ? C.green : C.orange,
-                  background: (booking.checkedIn ? C.green : C.orange).withValues(alpha: 0.18),
+                  booking.checkedIn ? 'Sudah masuk' : 'Siap discan',
+                  color: booking.checkedIn ? C.green : C.amber,
+                  background: booking.checkedIn ? C.tealSoft : C.amberSoft,
                 ),
               ],
             ),
@@ -145,8 +137,8 @@ class _TicketCard extends StatelessWidget {
                 Text(
                   booking.code,
                   style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: 0.5,
                     color: C.muted,
                   ),
@@ -171,7 +163,7 @@ class _Meta extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 13, color: C.muted),
+        Icon(icon, size: 14, color: C.muted),
         const SizedBox(width: 4),
         Flexible(
           child: Text(
@@ -179,7 +171,7 @@ class _Meta extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: C.ink,
             ),

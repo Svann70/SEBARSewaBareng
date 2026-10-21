@@ -20,25 +20,21 @@ class TicketScreen extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: kScreenPad,
           children: [
             const RoundBackHeader(title: 'Tiket masuk'),
             const SizedBox(height: 20),
             Center(
               child: Pill(
                 booking.checkedIn ? 'Sudah check-in' : 'Siap discan',
-                color: booking.checkedIn ? C.green : C.orange,
-                background: (booking.checkedIn ? C.green : C.orange).withValues(alpha: 0.18),
+                color: booking.checkedIn ? C.green : C.amber,
+                background: booking.checkedIn ? C.tealSoft : C.amberSoft,
                 icon: Icons.qr_code_scanner,
               ),
             ),
             const SizedBox(height: 10),
-            Text(
-              booking.title,
-              textAlign: TextAlign.center,
-              style: T.h1,
-            ),
-            const SizedBox(height: 3),
+            Text(booking.title, textAlign: TextAlign.center, style: T.h1),
+            const SizedBox(height: 4),
             Text(
               '${booking.venue} · ${booking.court}',
               textAlign: TextAlign.center,
@@ -49,8 +45,8 @@ class TicketScreen extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
               decoration: BoxDecoration(
                 color: C.surface,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: C.line),
+                borderRadius: BorderRadius.circular(26),
+                boxShadow: C.cardShadow,
               ),
               child: Column(
                 children: [
@@ -60,7 +56,8 @@ class TicketScreen extends ConsumerWidget {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: C.line),
                       ),
                       child: QrImageView(
                         data: booking.token,
@@ -70,11 +67,11 @@ class TicketScreen extends ConsumerWidget {
                         backgroundColor: Colors.white,
                         eyeStyle: const QrEyeStyle(
                           eyeShape: QrEyeShape.square,
-                          color: C.bg,
+                          color: C.ink,
                         ),
                         dataModuleStyle: const QrDataModuleStyle(
                           dataModuleShape: QrDataModuleShape.square,
-                          color: C.bg,
+                          color: C.ink,
                         ),
                       ),
                     ),
@@ -83,17 +80,14 @@ class TicketScreen extends ConsumerWidget {
                   Text(
                     booking.code,
                     style: const TextStyle(
-                      fontSize: 19,
+                      fontSize: 20,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 2.6,
                       color: C.ink,
                     ),
                   ),
-                  const SizedBox(height: 1),
-                  const Text(
-                    'Tunjukkan ke petugas venue',
-                    style: TextStyle(fontSize: 11, color: C.muted),
-                  ),
+                  const SizedBox(height: 2),
+                  const Text('Tunjukkan ke petugas venue', style: T.caption),
                 ],
               ),
             ),
@@ -110,7 +104,8 @@ class TicketScreen extends ConsumerWidget {
                 Expanded(
                   child: _TicketInfo(
                     label: 'Jam',
-                    value: '${formatTime(booking.start)}–${formatTime(booking.end)}',
+                    value:
+                        '${formatTime(booking.start)}–${formatTime(booking.end)}',
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -124,22 +119,21 @@ class TicketScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 14),
             SurfaceCard(
+              radius: 24,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.shield_outlined, size: 15, color: C.green),
+                      Icon(Icons.shield_outlined, size: 18, color: C.teal),
                       SizedBox(width: 7),
-                      Expanded(
-                        child: Text('Token sekali pakai', style: T.h3),
-                      ),
+                      Expanded(child: Text('Token sekali pakai', style: T.h3)),
                     ],
                   ),
                   const SizedBox(height: 7),
                   const Text(
-                    'QR ditandatangani HMAC dan kedaluwarsa 2 jam setelah mulai. '
-                    'Scan kedua ditolak dengan kode ALREADY_CHECKED_IN.',
+                    'QR hanya berlaku sekali dan kedaluwarsa 2 jam setelah '
+                    'jadwal mulai. Scan ulang akan ditolak.',
                     style: T.small,
                   ),
                   const SizedBox(height: 12),
@@ -161,7 +155,9 @@ class TicketScreen extends ConsumerWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: SebarButton(
-                          label: booking.checkedIn ? 'Sudah scan' : 'Simulasi scan',
+                          label: booking.checkedIn
+                              ? 'Sudah scan'
+                              : 'Simulasi scan',
                           icon: Icons.qr_code_scanner,
                           height: 44,
                           color: C.green,
@@ -205,24 +201,20 @@ class _TicketInfo extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: C.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: C.line),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 10, color: C.muted),
-          ),
-          const SizedBox(height: 2),
+          Text(label, style: T.caption),
+          const SizedBox(height: 3),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
               color: C.ink,
             ),
           ),

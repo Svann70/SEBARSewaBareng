@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'theme.dart';
 
-/// Kartu utama bergaya referensi: sudut besar, isian gradien,
-/// potongan diagonal di sisi kanan, dan garis orbit tipis.
+/// Kartu utama bergaya referensi: sudut besar, bidang organik tipis,
+/// dan cincin dekoratif di sisi kanan.
 class SportPanel extends StatelessWidget {
   const SportPanel({
     super.key,
@@ -14,8 +14,9 @@ class SportPanel extends StatelessWidget {
     this.height,
     this.onTap,
     this.diagonal = true,
-    this.radius = 26,
+    this.radius = 28,
     this.accent = Colors.white,
+    this.shadow = true,
   });
 
   final Widget child;
@@ -27,6 +28,7 @@ class SportPanel extends StatelessWidget {
   final bool diagonal;
   final double radius;
   final Color accent;
+  final bool shadow;
 
   @override
   Widget build(BuildContext context) {
@@ -39,9 +41,13 @@ class SportPanel extends StatelessWidget {
               child: IgnorePointer(
                 child: RepaintBoundary(
                   child: CustomPaint(
-                    painter: _DiagonalPainter(
-                      accent: accent.withValues(alpha: 0.16),
-                      line: accent.withValues(alpha: 0.22),
+                    painter: _PanelPainter(
+                      accent: accent.withValues(
+                        alpha: gradient == null ? 0.1 : 0.16,
+                      ),
+                      line: accent.withValues(
+                        alpha: gradient == null ? 0.1 : 0.24,
+                      ),
                     ),
                   ),
                 ),
@@ -52,7 +58,7 @@ class SportPanel extends StatelessWidget {
       ),
     );
 
-    return DecoratedBox(
+    return Container(
       decoration: BoxDecoration(
         color: gradient == null ? background : null,
         gradient: gradient == null
@@ -63,6 +69,7 @@ class SportPanel extends StatelessWidget {
                 end: Alignment.bottomRight,
               ),
         borderRadius: BorderRadius.circular(radius),
+        boxShadow: shadow ? C.cardShadow : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
@@ -77,41 +84,56 @@ class SportPanel extends StatelessWidget {
   }
 }
 
-class _DiagonalPainter extends CustomPainter {
-  _DiagonalPainter({required this.accent, required this.line});
+/// Bidang organik + cincin tipis, bahasa visual dari referensi.
+class _PanelPainter extends CustomPainter {
+  _PanelPainter({required this.accent, required this.line});
 
   final Color accent;
   final Color line;
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Potongan diagonal: satu bidang miring dari sudut kanan atas.
-    final band = Path()
-      ..moveTo(size.width * 0.62, 0)
-      ..lineTo(size.width, 0)
+    final blob = Path()
+      ..moveTo(size.width * 0.58, 0)
+      ..cubicTo(
+        size.width * 0.82,
+        size.height * 0.08,
+        size.width * 0.94,
+        size.height * 0.28,
+        size.width,
+        size.height * 0.34,
+      )
       ..lineTo(size.width, size.height)
-      ..lineTo(size.width * 0.3, size.height)
+      ..lineTo(size.width * 0.42, size.height)
+      ..cubicTo(
+        size.width * 0.56,
+        size.height * 0.72,
+        size.width * 0.44,
+        size.height * 0.4,
+        size.width * 0.58,
+        0,
+      )
       ..close();
-    canvas.drawPath(band, Paint()..color = accent);
+    canvas.drawPath(blob, Paint()..color = accent);
 
     final stroke = Paint()
       ..color = line
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
     canvas.drawCircle(
-      Offset(size.width * 0.86, size.height * 0.5),
-      size.height * 0.46,
+      Offset(size.width * 0.9, size.height * 0.12),
+      size.height * 0.5,
       stroke,
     );
-    canvas.drawLine(
-      Offset(size.width * 0.72, size.height),
-      Offset(size.width * 0.72, 0),
+    canvas.drawCircle(
+      Offset(size.width * 0.98, size.height * 0.86),
+      size.height * 0.22,
       stroke,
     );
   }
 
   @override
-  bool shouldRepaint(covariant _DiagonalPainter old) =>
+  bool shouldRepaint(covariant _PanelPainter old) =>
       old.accent != accent || old.line != line;
 }
 
@@ -132,16 +154,16 @@ class Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
       decoration: BoxDecoration(
-        color: background ?? Colors.white.withValues(alpha: 0.16),
+        color: background ?? C.surfaceAlt,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 12, color: color),
+            Icon(icon, size: 13, color: color),
             const SizedBox(width: 5),
           ],
           Flexible(
@@ -151,9 +173,10 @@ class Pill extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: color,
-                fontSize: 10.5,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.3,
+                letterSpacing: 0.1,
+                height: 1.2,
               ),
             ),
           ),
@@ -173,19 +196,30 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 26,
+      height: 30,
       child: Row(
         children: [
           Expanded(child: Text(title, style: T.h2)),
           if (action != null)
-            GestureDetector(
-              onTap: onTap,
-              child: Text(
-                action!,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: C.muted,
+            Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(999),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 4,
+                  ),
+                  child: Text(
+                    action!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: C.pink,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -219,15 +253,22 @@ class SebarButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = onPressed != null && !busy;
     return Opacity(
-      opacity: enabled ? 1 : 0.4,
-      child: DecoratedBox(
+      opacity: enabled ? 1 : 0.45,
+      child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [color, Color.lerp(color, Colors.black, 0.28)!],
+            colors: [color, Color.lerp(color, Colors.black, 0.22)!],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.28),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Material(
           color: Colors.transparent,
@@ -258,8 +299,8 @@ class SebarButton extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: foreground,
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
                         letterSpacing: -0.1,
                       ),
                     ),
@@ -281,7 +322,7 @@ class GhostButton extends StatelessWidget {
     this.icon,
     this.onPressed,
     this.color = C.ink,
-    this.height = 48,
+    this.height = 50,
   });
 
   final String label;
@@ -293,8 +334,11 @@ class GhostButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withValues(alpha: 0.07),
-      borderRadius: BorderRadius.circular(999),
+      color: C.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(999),
+        side: const BorderSide(color: C.line),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: onPressed,
@@ -305,7 +349,7 @@ class GhostButton extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 16, color: color),
+                Icon(icon, size: 17, color: color),
                 const SizedBox(width: 7),
               ],
               Flexible(
@@ -315,8 +359,8 @@ class GhostButton extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: color,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -334,9 +378,10 @@ class SurfaceCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(16),
     this.onTap,
-    this.radius = 22,
+    this.radius = 24,
     this.color,
     this.border = false,
+    this.shadow = true,
   });
 
   final Widget child;
@@ -345,30 +390,32 @@ class SurfaceCard extends StatelessWidget {
   final double radius;
   final Color? color;
   final bool border;
+  final bool shadow;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: color ?? C.surface,
-      borderRadius: BorderRadius.circular(radius),
-      child: InkWell(
+    return Container(
+      decoration: BoxDecoration(
+        color: color ?? C.surface,
         borderRadius: BorderRadius.circular(radius),
-        onTap: onTap,
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            border: border ? Border.all(color: C.line) : null,
-          ),
-          child: child,
+        border: border ? Border.all(color: C.line) : null,
+        boxShadow: shadow ? C.cardShadow : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(radius),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(radius),
+          onTap: onTap,
+          child: Padding(padding: padding, child: child),
         ),
       ),
     );
   }
 }
 
-/// Dock bawah: dua tujuan di kiri, dua di kanan, aksi utama di tengah.
-/// Aksi tengah tidak punya label supaya tidak menutupi ikon lain.
+/// Dock bawah mengambang: kapsul krem, dua tujuan di kiri, dua di kanan,
+/// aksi utama pink di tengah.
 class DockNav extends StatelessWidget {
   const DockNav({
     super.key,
@@ -390,7 +437,11 @@ class DockNav extends StatelessWidget {
   static const playerDock = [
     (Icons.explore_outlined, Icons.explore, 'Cari'),
     (Icons.confirmation_number_outlined, Icons.confirmation_number, 'Tiket'),
-    (Icons.account_balance_wallet_outlined, Icons.account_balance_wallet, 'Dompet'),
+    (
+      Icons.account_balance_wallet_outlined,
+      Icons.account_balance_wallet,
+      'Dompet',
+    ),
     (Icons.person_outline, Icons.person, 'Profil'),
   ];
 
@@ -404,38 +455,53 @@ class DockNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: C.bg,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [C.bg.withValues(alpha: 0), C.bg],
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 72,
+          height: 76,
           child: Stack(
             clipBehavior: Clip.none,
             alignment: Alignment.center,
             children: [
-              Row(
-                children: [
-                  for (var i = 0; i < 2; i++)
-                    Expanded(
-                      child: _DockItem(
-                        item: items[i],
-                        active: i == index,
-                        onTap: () => onSelect(i),
+              Container(
+                height: 68,
+                decoration: BoxDecoration(
+                  color: C.surface,
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: C.cardShadow,
+                ),
+                child: Row(
+                  children: [
+                    for (var i = 0; i < 2; i++)
+                      Expanded(
+                        child: _DockItem(
+                          item: items[i],
+                          active: i == index,
+                          onTap: () => onSelect(i),
+                        ),
                       ),
-                    ),
-                  const SizedBox(width: 78),
-                  for (var i = 2; i < 4; i++)
-                    Expanded(
-                      child: _DockItem(
-                        item: items[i],
-                        active: i == index,
-                        onTap: () => onSelect(i),
+                    const SizedBox(width: 74),
+                    for (var i = 2; i < 4; i++)
+                      Expanded(
+                        child: _DockItem(
+                          item: items[i],
+                          active: i == index,
+                          onTap: () => onSelect(i),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
               Positioned(
-                top: -22,
+                top: -18,
                 child: _CenterAction(icon: centerIcon, onTap: onCreate),
               ),
             ],
@@ -459,24 +525,36 @@ class _DockItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? C.ink : C.faint;
+    final color = active ? C.pinkDeep : C.muted;
     return InkWell(
       onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(active ? item.$2 : item.$1, size: 22, color: color),
-          const SizedBox(height: 4),
-          Text(
-            item.$3,
-            maxLines: 1,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: color,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: active ? C.pinkSoft : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Icon(active ? item.$2 : item.$1, size: 21, color: color),
             ),
-          ),
-        ],
+            const SizedBox(height: 2),
+            Text(
+              item.$3,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -498,11 +576,18 @@ class _CenterAction extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: const LinearGradient(
-            colors: [Color(0xFFFF6E8C), C.pinkDeep],
+            colors: [Color(0xFFD9486C), C.pinkDeep],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(color: C.bg, width: 5),
+          border: Border.all(color: C.surface, width: 5),
+          boxShadow: [
+            BoxShadow(
+              color: C.pink.withValues(alpha: 0.35),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Icon(icon, color: Colors.white, size: 28),
       ),
@@ -527,20 +612,20 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
       child: Column(
         children: [
           Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
+            width: 58,
+            height: 58,
+            decoration: const BoxDecoration(
               color: C.surface,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: C.muted, size: 24),
+            child: Icon(icon, color: C.teal, size: 26),
           ),
           const SizedBox(height: 12),
-          Text(title, style: T.h3),
+          Text(title, style: T.h3, textAlign: TextAlign.center),
           const SizedBox(height: 5),
           Text(message, textAlign: TextAlign.center, style: T.small),
           if (action != null) ...[const SizedBox(height: 14), action!],
@@ -559,6 +644,8 @@ class LabeledField extends StatelessWidget {
     this.obscure = false,
     this.keyboard,
     this.prefixIcon,
+    this.onChanged,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   final String label;
@@ -567,6 +654,8 @@ class LabeledField extends StatelessWidget {
   final bool obscure;
   final TextInputType? keyboard;
   final IconData? prefixIcon;
+  final ValueChanged<String>? onChanged;
+  final TextCapitalization textCapitalization;
 
   @override
   Widget build(BuildContext context) {
@@ -579,38 +668,80 @@ class LabeledField extends StatelessWidget {
           controller: controller,
           obscureText: obscure,
           keyboardType: keyboard,
+          onChanged: onChanged,
+          textCapitalization: textCapitalization,
           style: const TextStyle(
-            fontSize: 14,
+            fontSize: 15.5,
             fontWeight: FontWeight.w600,
             color: C.ink,
           ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: C.faint, fontSize: 13),
             prefixIcon: prefixIcon == null
                 ? null
-                : Icon(prefixIcon, size: 18, color: C.faint),
-            filled: true,
-            fillColor: C.surface,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 15,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: C.pink, width: 1.4),
-            ),
+                : Icon(prefixIcon, size: 19, color: C.muted),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Kolom pencarian krem dengan ikon dan tombol bersihkan.
+class SearchField extends StatelessWidget {
+  const SearchField({
+    super.key,
+    required this.controller,
+    this.hint = 'Cari lapangan, venue, atau kota',
+    this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) => Container(
+        decoration: BoxDecoration(
+          color: C.surface,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: C.cardShadow,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          child: TextField(
+            controller: controller,
+            onChanged: onChanged,
+            textInputAction: TextInputAction.search,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: C.ink,
+            ),
+            decoration: InputDecoration(
+              hintText: hint,
+              prefixIcon: const Icon(Icons.search, size: 21, color: C.muted),
+              suffixIcon: value.text.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close, size: 18, color: C.muted),
+                      onPressed: () {
+                        controller.clear();
+                        onChanged?.call('');
+                      },
+                    ),
+              filled: false,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -624,30 +755,96 @@ class ScoreBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = score >= 80
-        ? C.green
+        ? C.greenDeep
         : score >= 60
-        ? C.orange
-        : C.pink;
+        ? C.amberDeep
+        : C.coral;
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 7 : 9,
-        vertical: compact ? 3 : 4,
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 4 : 5,
       ),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.shield_outlined, size: compact ? 11 : 12, color: color),
+          Icon(Icons.shield_outlined, size: compact ? 12 : 14, color: color),
           const SizedBox(width: 3),
           Text(
             '$score',
             style: TextStyle(
               color: color,
-              fontSize: compact ? 10.5 : 11.5,
+              fontSize: 12,
               fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Lingkaran statistik ala referensi: ikon, angka, label.
+class StatCircle extends StatelessWidget {
+  const StatCircle({
+    super.key,
+    required this.value,
+    required this.label,
+    this.icon,
+    this.color = C.teal,
+    this.background = C.tealSoft,
+    this.size = 82,
+  });
+
+  final String value;
+  final String label;
+  final IconData? icon;
+  final Color color;
+  final Color background;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: background,
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: color),
+            const SizedBox(height: 3),
+          ],
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.6,
+              height: 1,
+              color: C.ink,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.1,
+              color: color,
             ),
           ),
         ],
@@ -664,12 +861,16 @@ class QuotaRing extends StatelessWidget {
     required this.quota,
     this.size = 64,
     this.color = Colors.white,
+    this.foreground = Colors.white,
+    this.track = Colors.white24,
   });
 
   final int joined;
   final int quota;
   final double size;
   final Color color;
+  final Color foreground;
+  final Color track;
 
   @override
   Widget build(BuildContext context) {
@@ -686,7 +887,7 @@ class QuotaRing extends StatelessWidget {
             child: CircularProgressIndicator(
               value: pct,
               strokeWidth: size * 0.09,
-              backgroundColor: Colors.white.withValues(alpha: 0.22),
+              backgroundColor: track,
               valueColor: AlwaysStoppedAnimation(color),
               strokeCap: StrokeCap.round,
             ),
@@ -701,15 +902,15 @@ class QuotaRing extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                   height: 1,
                   letterSpacing: -0.5,
-                  color: Colors.white,
+                  color: foreground,
                 ),
               ),
               Text(
                 'dari $quota',
                 style: TextStyle(
-                  fontSize: size * 0.15,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: size * 0.16,
+                  fontWeight: FontWeight.w600,
+                  color: foreground.withValues(alpha: 0.8),
                 ),
               ),
             ],
@@ -730,10 +931,10 @@ class SheetWrap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
       decoration: const BoxDecoration(
         color: C.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -741,8 +942,8 @@ class SheetWrap extends StatelessWidget {
         children: [
           Center(
             child: Container(
-              width: 36,
-              height: 4,
+              width: 40,
+              height: 5,
               decoration: BoxDecoration(
                 color: C.line,
                 borderRadius: BorderRadius.circular(999),
@@ -751,7 +952,7 @@ class SheetWrap extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(title, style: T.h2),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           ...children,
         ],
       ),
@@ -778,10 +979,580 @@ String formatDate(DateTime d) {
   return '${days[d.weekday - 1]}, ${d.day} ${months[d.month - 1]}';
 }
 
+String formatLongDate(DateTime d) {
+  const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+  const months = [
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
+  ];
+  return '${days[d.weekday - 1]}, ${d.day} ${months[d.month - 1]} ${d.year}';
+}
+
 String formatTime(DateTime d) =>
     '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
 String formatCountdown(Duration d) {
   if (d.isNegative) return 'Ditutup';
   return '${d.inHours}j ${d.inMinutes % 60}m';
+}
+
+// ─── Bahasa visual referensi ────────────────────────────────────────────────
+
+/// Pil gelap pekat dengan label putih — aksi sekunder di dalam blok warna
+/// (gaya tombol "Request Demo" pada referensi).
+class DarkPillButton extends StatelessWidget {
+  const DarkPillButton({
+    super.key,
+    required this.label,
+    this.icon,
+    this.onTap,
+    this.color = C.ink,
+    this.foreground = Colors.white,
+    this.height = 42,
+  });
+
+  final String label;
+  final IconData? icon;
+  final VoidCallback? onTap;
+  final Color color;
+  final Color foreground;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          height: height,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 17, color: foreground),
+                const SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: foreground,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Sakelar dua/tiga segmen dalam kapsul (gaya Weekly/Month).
+class Segmented<V> extends StatelessWidget {
+  const Segmented({
+    super.key,
+    required this.options,
+    required this.value,
+    required this.onChanged,
+    this.labelOf,
+    this.background = C.surface,
+    this.selectedBackground = C.ink,
+    this.selectedForeground = Colors.white,
+    this.foreground = C.muted,
+    this.height = 42,
+  });
+
+  final List<V> options;
+  final V value;
+  final ValueChanged<V> onChanged;
+  final String Function(V)? labelOf;
+  final Color background;
+  final Color selectedBackground;
+  final Color selectedForeground;
+  final Color foreground;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: [
+          for (final o in options)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(o),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: o == value ? selectedBackground : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    labelOf?.call(o) ?? '$o',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: o == value ? selectedForeground : foreground,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Kartu hitung gaya referensi: badge ikon bulat di atas, angka besar,
+/// label kecil di bawah.
+class CountCard extends StatelessWidget {
+  const CountCard({
+    super.key,
+    required this.icon,
+    required this.value,
+    required this.label,
+    this.color = C.teal,
+    this.tint = C.tealSoft,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+  final Color tint;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
+          child: Icon(icon, size: 19, color: color),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -1,
+            height: 1,
+            color: C.ink,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: T.caption,
+        ),
+      ],
+    );
+  }
+}
+
+/// Baris peringkat/blok berwarna: ikon atau nomor di kiri, judul, pil nilai,
+/// lalu tumpukan avatar di kanan (gaya Leaderboard).
+class RankRow extends StatelessWidget {
+  const RankRow({
+    super.key,
+    required this.rank,
+    required this.title,
+    this.subtitle,
+    this.value,
+    this.background = C.surface,
+    this.foreground = C.ink,
+    this.avatars = const [],
+    this.onTap,
+  });
+
+  final int rank;
+  final String title;
+  final String? subtitle;
+  final String? value;
+  final Color background;
+  final Color foreground;
+  final List<String> avatars;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: foreground.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '#$rank',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: foreground,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                        color: foreground,
+                      ),
+                    ),
+                    if (subtitle != null)
+                      Text(
+                        subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: foreground.withValues(alpha: 0.72),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (value != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: C.surface,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: C.line),
+                  ),
+                  child: Text(
+                    value!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: C.ink,
+                    ),
+                  ),
+                ),
+              ],
+              if (avatars.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                AvatarStack(names: avatars),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tumpukan avatar inisial yang saling menumpuk.
+class AvatarStack extends StatelessWidget {
+  const AvatarStack({
+    super.key,
+    required this.names,
+    this.size = 30,
+    this.max = 3,
+    this.colors = const [C.pinkFill, C.tealFill, C.amberFill, C.purple],
+  });
+
+  final List<String> names;
+  final double size;
+  final int max;
+  final List<Color> colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = names.take(max).toList();
+    if (shown.isEmpty) return const SizedBox.shrink();
+    final overlap = size * 0.34;
+    return SizedBox(
+      width: size + (shown.length - 1) * (size - overlap),
+      height: size,
+      child: Stack(
+        children: [
+          for (var i = 0; i < shown.length; i++)
+            Positioned(
+              left: i * (size - overlap),
+              child: Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  color: colors[i % colors.length],
+                  shape: BoxShape.circle,
+                  border: Border.all(color: C.surface, width: 2),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  shown[i].isEmpty ? '?' : shown[i][0].toUpperCase(),
+                  style: TextStyle(
+                    fontSize: size * 0.42,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Kartu grafik tren dengan lencana nilai mengambang (gaya referensi).
+class TrendChartCard extends StatelessWidget {
+  const TrendChartCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.headline,
+    required this.badge,
+    required this.values,
+    required this.labels,
+    this.lineColor = C.pinkFill,
+  });
+
+  final String title;
+  final String subtitle;
+  final String headline;
+  final String badge;
+  final List<double> values;
+  final List<String> labels;
+  final Color lineColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return SurfaceCard(
+      radius: 26,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: T.h3,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: T.caption,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                headline,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1,
+                  height: 1,
+                  color: C.ink,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 122,
+            width: double.infinity,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: TrendChartPainter(
+                      values: values,
+                      color: lineColor,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: C.ink,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      badge,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (final l in labels)
+                Flexible(
+                  child: Text(
+                    l,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: T.caption,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TrendChartPainter extends CustomPainter {
+  TrendChartPainter({required this.values, this.color = C.pinkFill});
+
+  final List<double> values;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.length < 2) return;
+    final maxV = values.reduce((a, b) => a > b ? a : b);
+    final minV = values.reduce((a, b) => a < b ? a : b);
+    final range = (maxV - minV) == 0 ? 1 : maxV - minV;
+    final dx = size.width / (values.length - 1);
+
+    Offset point(int i) => Offset(
+      dx * i,
+      size.height - 10 - ((values[i] - minV) / range) * (size.height - 30),
+    );
+
+    final line = Path()..moveTo(point(0).dx, point(0).dy);
+    for (var i = 0; i < values.length - 1; i++) {
+      final p0 = point(i);
+      final p1 = point(i + 1);
+      final midX = (p0.dx + p1.dx) / 2;
+      line.cubicTo(midX, p0.dy, midX, p1.dy, p1.dx, p1.dy);
+    }
+
+    final fill = Path.from(line)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(
+      fill,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [color.withValues(alpha: 0.22), color.withValues(alpha: 0)],
+        ).createShader(Offset.zero & size),
+    );
+
+    canvas.drawPath(
+      line,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.8
+        ..strokeCap = StrokeCap.round,
+    );
+
+    canvas.drawLine(
+      Offset(0, size.height - 1),
+      Offset(size.width, size.height - 1),
+      Paint()
+        ..color = C.line
+        ..strokeWidth = 1,
+    );
+
+    for (var i = 0; i < values.length; i++) {
+      final p = point(i);
+      canvas.drawCircle(p, 4.4, Paint()..color = C.surface);
+      canvas.drawCircle(
+        p,
+        2.8,
+        Paint()..color = i == values.length - 1 ? C.ink : color,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant TrendChartPainter old) =>
+      old.values != values || old.color != color;
 }

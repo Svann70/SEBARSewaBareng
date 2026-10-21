@@ -24,12 +24,15 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
   Widget build(BuildContext context) {
     final all = ref.watch(venueSlotsProvider);
     final day = DateTime.now().add(Duration(days: _day));
-    final slots = slotsOn(all, day)
-        .where((s) => _court == 0 || s.court == _court)
-        .toList();
+    final slots = slotsOn(
+      all,
+      day,
+    ).where((s) => _court == 0 || s.court == _court).toList();
 
     final booked = slots
-        .where((s) => s.status == SlotStatus.booked || s.status == SlotStatus.lobby)
+        .where(
+          (s) => s.status == SlotStatus.booked || s.status == SlotStatus.lobby,
+        )
         .length;
     final open = slots.where((s) => s.status == SlotStatus.open).length;
     final estimate = slots
@@ -37,7 +40,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
         .fold<int>(0, (sum, s) => sum + s.price);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      padding: kScreenPad,
       children: [
         Row(
           children: [
@@ -50,7 +53,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 16.5,
+                      fontSize: 15.5,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.4,
                       color: C.ink,
@@ -73,10 +76,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
           ],
         ),
         const SizedBox(height: 14),
-        _DayStrip(
-          selected: _day,
-          onPick: (d) => setState(() => _day = d),
-        ),
+        _DayStrip(selected: _day, onPick: (d) => setState(() => _day = d)),
         const SizedBox(height: 12),
         SurfaceCard(
           radius: 18,
@@ -135,8 +135,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
           )
         else
           for (var c = 1; c <= venueProfile.courts; c++)
-            if (_court == 0 || _court == c)
-              ..._courtSection(slots, c),
+            if (_court == 0 || _court == c) ..._courtSection(slots, c),
         const SizedBox(height: 6),
         SurfaceCard(
           radius: 18,
@@ -170,7 +169,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
             const SizedBox(width: 6),
             Text(
               '· ${mine.length} slot',
-              style: const TextStyle(fontSize: 11, color: C.faint),
+              style: const TextStyle(fontSize: 12, color: C.faint),
             ),
           ],
         ),
@@ -205,11 +204,13 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
             ],
           ),
           const SizedBox(height: 14),
-          _DetailRow('Tanggal', formatDate(slot.start)),
-          _DetailRow('Durasi', '2 jam'),
+          _DetailRow('Tanggal', formatLongDate(slot.start)),
+          _DetailRow('Durasi', '${slot.durationHours} jam'),
           _DetailRow(
             'Harga',
-            slot.price == 0 ? 'Tidak dijual' : rupiah(slot.price),
+            slot.price == 0
+                ? 'Tidak dijual'
+                : '${rupiah(slot.price)} · ${rupiah(slot.pricePerHour)}/jam',
           ),
           if (slot.guest != null) _DetailRow('Terisi oleh', slot.guest!),
           const SizedBox(height: 6),
@@ -229,9 +230,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
                     icon: slot.status == SlotStatus.closed
                         ? Icons.lock_open
                         : Icons.lock_outline,
-                    color: slot.status == SlotStatus.closed
-                        ? C.green
-                        : C.coral,
+                    color: slot.status == SlotStatus.closed ? C.green : C.coral,
                     onPressed: () {
                       ref
                           .read(venueSlotsProvider.notifier)
@@ -335,9 +334,9 @@ class _DayStrip extends StatelessWidget {
                     i == 0 ? 'Hari ini' : _dow[d.weekday - 1],
                     maxLines: 1,
                     style: TextStyle(
-                      fontSize: 8.5,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: active ? Colors.white70 : C.faint,
+                      color: active ? Colors.white : C.faint,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -376,13 +375,13 @@ class _Stat extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 14,
+            fontSize: 15,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.4,
             color: color,
           ),
         ),
-        Text(label, style: const TextStyle(fontSize: 10, color: C.faint)),
+        Text(label, style: const TextStyle(fontSize: 12, color: C.faint)),
       ],
     );
   }
@@ -422,7 +421,7 @@ class _CourtChip extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
               color: selected ? Colors.white : C.muted,
             ),
@@ -477,7 +476,7 @@ class _SlotRow extends StatelessWidget {
                     ),
                     Text(
                       formatTime(slot.end),
-                      style: const TextStyle(fontSize: 10.5, color: C.faint),
+                      style: const TextStyle(fontSize: 12, color: C.faint),
                     ),
                   ],
                 ),
@@ -491,7 +490,7 @@ class _SlotRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: C.ink,
                       ),
@@ -500,7 +499,7 @@ class _SlotRow extends StatelessWidget {
                     Text(
                       slot.status.label,
                       style: TextStyle(
-                        fontSize: 10.5,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: color,
                       ),
@@ -542,13 +541,13 @@ class _DetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontSize: 12.5, color: C.muted),
+              style: const TextStyle(fontSize: 12, color: C.muted),
             ),
           ),
           Text(
             value,
             style: const TextStyle(
-              fontSize: 12.5,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
               color: C.ink,
             ),
@@ -580,16 +579,11 @@ class _AddSlotSheet extends ConsumerStatefulWidget {
 class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
   int _court = 1;
   int _hour = 8;
-  final _price = TextEditingController(text: '200000');
-
-  @override
-  void dispose() {
-    _price.dispose();
-    super.dispose();
-  }
+  int _duration = 2;
 
   void _save() {
-    final price = int.tryParse(_price.text.replaceAll('.', '')) ?? 0;
+    final venue = venueByName(venueProfile.name);
+    final rate = venue.rateOn(widget.day);
     final start = DateTime(
       widget.day.year,
       widget.day.month,
@@ -601,13 +595,13 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
         .add(
           court: _court,
           start: start,
-          end: start.add(const Duration(hours: 2)),
-          price: price,
+          end: start.add(Duration(hours: _duration)),
+          price: rate * _duration,
         );
     if (error != null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('$error (409)')));
+      ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
     Navigator.pop(context);
@@ -615,7 +609,7 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
       SnackBar(
         content: Text(
           'Slot Lapangan $_court ${_hour.toString().padLeft(2, '0')}:00 '
-          'dibuka.',
+          'selama $_duration jam sudah dibuka.',
         ),
       ),
     );
@@ -623,16 +617,25 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final venue = venueByName(venueProfile.name);
+    final rate = venue.rateOn(widget.day);
+    final total = rate * _duration;
+    final isWeekend = venue.isWeekend(widget.day);
+
     return SheetWrap(
       title: 'Tambah slot',
       children: [
-        Text(formatDate(widget.day), style: T.small),
+        Text(
+          '${formatLongDate(widget.day)} · '
+          'tarif ${isWeekend ? 'weekend' : 'weekday'}',
+          style: T.small,
+        ),
         const SizedBox(height: 14),
         const Text('Lapangan', style: T.label),
         const SizedBox(height: 7),
         Row(
           children: [
-            for (var c = 1; c <= venueProfile.courts; c++) ...[
+            for (var c = 1; c <= venue.courts; c++) ...[
               Expanded(
                 child: GestureDetector(
                   onTap: () => setState(() => _court = c),
@@ -649,7 +652,7 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
                     child: Text(
                       'Lapangan $c',
                       style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: _court == c ? Colors.white : C.ink,
                       ),
@@ -657,12 +660,12 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
                   ),
                 ),
               ),
-              if (c != venueProfile.courts) const SizedBox(width: 8),
+              if (c != venue.courts) const SizedBox(width: 8),
             ],
           ],
         ),
         const SizedBox(height: 14),
-        const Text('Jam mulai (2 jam)', style: T.label),
+        const Text('Jam mulai', style: T.label),
         const SizedBox(height: 7),
         SizedBox(
           height: 40,
@@ -676,7 +679,7 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
               return GestureDetector(
                 onTap: () => setState(() => _hour = h),
                 child: Container(
-                  width: 52,
+                  width: 56,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: active ? C.purple : C.surface,
@@ -686,7 +689,7 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
                   child: Text(
                     '${h.toString().padLeft(2, '0')}:00',
                     style: TextStyle(
-                      fontSize: 11.5,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: active ? Colors.white : C.ink,
                     ),
@@ -697,12 +700,74 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
           ),
         ),
         const SizedBox(height: 14),
-        LabeledField(
-          label: 'Harga slot',
-          controller: _price,
-          hint: '200000',
-          keyboard: TextInputType.number,
-          prefixIcon: Icons.payments_outlined,
+        const Text('Durasi', style: T.label),
+        const SizedBox(height: 7),
+        Row(
+          children: [
+            for (var d = 1; d <= 3; d++) ...[
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _duration = d),
+                  child: Container(
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _duration == d ? C.purple : C.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: _duration == d ? C.purple : C.line,
+                      ),
+                    ),
+                    child: Text(
+                      '$d jam',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: _duration == d ? Colors.white : C.ink,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (d != 3) const SizedBox(width: 8),
+            ],
+          ],
+        ),
+        const SizedBox(height: 16),
+        SurfaceCard(
+          radius: 16,
+          color: C.surfaceAlt,
+          shadow: false,
+          child: Column(
+            children: [
+              _DetailRow('Tarif per jam', rupiah(rate)),
+              _DetailRow('Durasi', '$_duration jam'),
+              const Divider(height: 18),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Harga slot',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: C.ink,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    rupiah(total),
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.4,
+                      color: C.pinkDeep,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 16),
         SebarButton(label: 'Buka slot', icon: Icons.add, onPressed: _save),
@@ -743,25 +808,23 @@ class VenueAnalyticsTab extends StatelessWidget {
     final maxPeak = peakHours.map((e) => e.$2).reduce((a, b) => a > b ? a : b);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      padding: kScreenPad,
       children: [
         SportPanel(
-          gradient: const [Color(0xFF43D99A), Color(0xFF17A56B)],
+          gradient: C.tealPanel,
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Pill('Omzet bulan ini', background: Colors.white24),
+              Pill(
+                'Omzet bulan ini',
+                color: Colors.white,
+                background: Colors.black.withValues(alpha: 0.2),
+              ),
               const SizedBox(height: 10),
               Text(
                 rupiah(venueSummary.revenue),
-                style: const TextStyle(
-                  fontSize: 27,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -1.3,
-                  height: 1,
-                  color: C.ink,
-                ),
+                style: T.h1.copyWith(color: Colors.white),
               ),
               const SizedBox(height: 6),
               Text(
@@ -771,7 +834,7 @@ class VenueAnalyticsTab extends StatelessWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   height: 1.4,
-                  color: Colors.white.withValues(alpha: 0.78),
+                  color: Colors.white,
                 ),
               ),
             ],
@@ -820,7 +883,7 @@ class VenueAnalyticsTab extends StatelessWidget {
                               Text(
                                 '${p.$2}',
                                 style: const TextStyle(
-                                  fontSize: 9,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                   color: C.muted,
                                 ),
@@ -839,7 +902,7 @@ class VenueAnalyticsTab extends StatelessWidget {
                               Text(
                                 '${p.$1}',
                                 style: const TextStyle(
-                                  fontSize: 9,
+                                  fontSize: 12,
                                   color: C.muted,
                                 ),
                               ),
@@ -893,7 +956,7 @@ class VenueAnalyticsTab extends StatelessWidget {
                   for (final m in monthlyRevenue)
                     Text(
                       m.$1,
-                      style: const TextStyle(fontSize: 9.5, color: C.muted),
+                      style: const TextStyle(fontSize: 12, color: C.muted),
                     ),
                 ],
               ),
@@ -909,7 +972,7 @@ class VenueAnalyticsTab extends StatelessWidget {
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
-                  'Semua angka dari GROUP BY di database, bukan input manual.',
+                  'Angka dihitung otomatis dari transaksi yang tercatat.',
                   style: T.small,
                 ),
               ),
@@ -950,13 +1013,13 @@ class _Kpi extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              fontSize: 19,
+              fontSize: 20,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.6,
               color: C.ink,
             ),
           ),
-          Text(label, style: const TextStyle(fontSize: 10.5, color: C.muted)),
+          Text(label, style: const TextStyle(fontSize: 12, color: C.muted)),
         ],
       ),
     );
@@ -1066,13 +1129,13 @@ class _VenueScanTabState extends State<VenueScanTab> {
     } else if (code == 'SEB-4K2P-DUP') {
       setState(() {
         _result = 'GAGAL';
-        _resultDetail = 'ALREADY_CHECKED_IN — tiket sudah discan.';
+        _resultDetail = 'Tiket ini sudah pernah discan.';
         _history.insert(0, (code, 'Sudah discan', false));
       });
     } else {
       setState(() {
         _result = 'GAGAL';
-        _resultDetail = 'TICKET_EXPIRED — kode tidak dikenal atau kedaluwarsa.';
+        _resultDetail = 'Kode tidak dikenal atau sudah kedaluwarsa.';
         _history.insert(0, (code.isEmpty ? '—' : code, 'Tidak dikenal', false));
       });
     }
@@ -1081,37 +1144,36 @@ class _VenueScanTabState extends State<VenueScanTab> {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      padding: kScreenPad,
       children: [
         const Text('Scan tiket', style: T.h1),
         const SizedBox(height: 3),
         Text('Validasi QR peserta saat masuk lapangan.', style: T.small),
         const SizedBox(height: 14),
         Container(
-          height: 188,
+          padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
             color: C.surfaceAlt,
             borderRadius: BorderRadius.circular(22),
           ),
-          child: Stack(
-            alignment: Alignment.center,
+          child: Column(
             children: [
               Container(
-                width: 132,
-                height: 132,
+                width: 128,
+                height: 128,
                 decoration: BoxDecoration(
+                  color: C.surface,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: C.green, width: 2),
                 ),
-              ),
-              const Icon(Icons.qr_code_scanner, size: 40, color: C.green),
-              const Positioned(
-                bottom: 14,
-                child: Text(
-                  'Arahkan kamera ke QR peserta',
-                  style: TextStyle(fontSize: 11, color: C.muted),
+                child: const Icon(
+                  Icons.qr_code_scanner,
+                  size: 42,
+                  color: C.green,
                 ),
               ),
+              const SizedBox(height: 14),
+              const Text('Arahkan kamera ke QR peserta', style: T.small),
             ],
           ),
         ),
@@ -1162,7 +1224,7 @@ class _VenueScanTabState extends State<VenueScanTab> {
                       Text(
                         _resultDetail!,
                         style: const TextStyle(
-                          fontSize: 11.5,
+                          fontSize: 12,
                           color: C.ink,
                           height: 1.35,
                         ),
@@ -1201,7 +1263,7 @@ class _VenueScanTabState extends State<VenueScanTab> {
                         Text(
                           h.$1,
                           style: const TextStyle(
-                            fontSize: 12.5,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: C.ink,
                           ),
@@ -1213,7 +1275,7 @@ class _VenueScanTabState extends State<VenueScanTab> {
                   Text(
                     h.$3 ? 'Masuk' : 'Ditolak',
                     style: TextStyle(
-                      fontSize: 10.5,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: h.$3 ? C.green : C.coral,
                     ),
@@ -1225,14 +1287,17 @@ class _VenueScanTabState extends State<VenueScanTab> {
         const SizedBox(height: 12),
         SurfaceCard(
           radius: 18,
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Kode uji', style: T.h3),
-              const SizedBox(height: 5),
-              const Text(
-                'SEB-4K2P valid\nSEB-4K2P-DUP sudah discan\nkode lain kedaluwarsa',
-                style: T.small,
+              const Icon(Icons.info_outline, size: 16, color: C.muted),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'Minta peserta menunjukkan QR tiket. Satu tiket hanya '
+                  'berlaku untuk sekali masuk.',
+                  style: T.small,
+                ),
               ),
             ],
           ),

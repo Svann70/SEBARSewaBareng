@@ -19,7 +19,10 @@ void main() {
     expect(soon.penaltyPct, 50);
     expect(soon.scoreDelta, -10);
 
-    final ghost = penaltyFor(untilStart: const Duration(hours: 1), noShow: true);
+    final ghost = penaltyFor(
+      untilStart: const Duration(hours: 1),
+      noShow: true,
+    );
     expect(ghost.refundPct, 0);
     expect(ghost.scoreDelta, -25);
   });

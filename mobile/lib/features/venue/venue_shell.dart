@@ -56,19 +56,30 @@ class _VenueShellState extends State<VenueShell> {
   }
 }
 
-class _VenueHome extends ConsumerWidget {
+class _VenueHome extends ConsumerStatefulWidget {
   const _VenueHome();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final today = slotsOn(ref.watch(venueSlotsProvider), DateTime.now());
+  ConsumerState<_VenueHome> createState() => _VenueHomeState();
+}
+
+class _VenueHomeState extends ConsumerState<_VenueHome> {
+  String _period = 'Pekan';
+
+  @override
+  Widget build(BuildContext context) {
+    final all = ref.watch(venueSlotsProvider);
+    final today = slotsOn(all, DateTime.now());
     final booked = today
-        .where((s) => s.status == SlotStatus.booked || s.status == SlotStatus.lobby)
+        .where(
+          (s) => s.status == SlotStatus.booked || s.status == SlotStatus.lobby,
+        )
         .length;
     final open = today.where((s) => s.status == SlotStatus.open).length;
+    final courts = _courtStats(_period == 'Pekan' ? today : _rollup(all, 7));
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      padding: kScreenPad,
       children: [
         Row(
           children: [
@@ -76,13 +87,13 @@ class _VenueHome extends ConsumerWidget {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: C.lilac,
+                color: C.tealSoft,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: const Icon(
                 Icons.storefront_outlined,
                 size: 20,
-                color: C.purple,
+                color: C.teal,
               ),
             ),
             const SizedBox(width: 11),
@@ -98,7 +109,7 @@ class _VenueHome extends ConsumerWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 16,
+                            fontSize: 15.5,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.4,
                             color: C.ink,
@@ -107,7 +118,7 @@ class _VenueHome extends ConsumerWidget {
                       ),
                       if (venueProfile.verified) ...[
                         const SizedBox(width: 5),
-                        const Icon(Icons.verified, size: 14, color: C.purple),
+                        const Icon(Icons.verified, size: 14, color: C.teal),
                       ],
                     ],
                   ),
@@ -118,37 +129,38 @@ class _VenueHome extends ConsumerWidget {
                 ],
               ),
             ),
-            const Pill('Venue', background: C.lilac, color: C.purple),
+            const Pill('Venue', background: C.tealSoft, color: C.tealDeep),
           ],
         ),
         const SizedBox(height: 16),
         SportPanel(
-          gradient: const [Color(0xFF9C90FF), Color(0xFF6C5CE0)],
+          gradient: C.tealPanel,
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Pill('Pendapatan bulan ini', background: Colors.white24),
+              Pill(
+                'Pendapatan bulan ini',
+                color: Colors.white,
+                background: Colors.black.withValues(alpha: 0.2),
+              ),
               const SizedBox(height: 10),
               Text(
                 rupiah(venueSummary.revenue),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 27,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -1.3,
-                  height: 1,
-                  color: C.ink,
-                ),
+                style: T.h1.copyWith(color: Colors.white),
               ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 16,
                 runSpacing: 6,
                 children: [
-                  _HeroMeta(value: '${venueSummary.bookings}', label: 'Booking'),
+                  _HeroMeta(
+                    value: '${venueSummary.bookings}',
+                    label: 'Booking',
+                  ),
                   _HeroMeta(
                     value: '${(venueSummary.occupancy * 100).round()}%',
                     label: 'Okupansi',
@@ -177,7 +189,7 @@ class _VenueHome extends ConsumerWidget {
                 icon: Icons.payments_outlined,
                 label: 'Cairkan',
                 detail: rupiah(venueProfile.payout),
-                tint: C.purple,
+                tint: C.teal,
                 onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Pencairan H+1 setelah check-in.'),
@@ -188,6 +200,35 @@ class _VenueHome extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 20),
+        SectionHeader('Papan okupansi', action: _period, onTap: () {}),
+        const SizedBox(height: 10),
+        Segmented<String>(
+          options: const ['Pekan', 'Bulan'],
+          value: _period,
+          onChanged: (v) => setState(() => _period = v),
+        ),
+        const SizedBox(height: 12),
+        if (courts.isEmpty)
+          Text('Belum ada slot pada periode ini.', style: T.small)
+        else
+          for (var i = 0; i < courts.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: RankRow(
+                rank: i + 1,
+                title: 'Lapangan ${courts[i].court}',
+                subtitle: '${courts[i].taken} dari ${courts[i].total} slot',
+                value: '${courts[i].percent}%',
+                background: switch (i % 4) {
+                  0 => C.pinkSoft,
+                  2 => C.amberSoft,
+                  3 => C.tealSoft,
+                  _ => C.surface,
+                },
+                avatars: courts[i].guests,
+              ),
+            ),
+        const SizedBox(height: 14),
         SectionHeader(
           'Jadwal hari ini',
           action: '$booked terisi',
@@ -200,7 +241,10 @@ class _VenueHome extends ConsumerWidget {
             child: _TodayRow(slot: s),
           ),
         if (today.isEmpty)
-          Text('Belum ada slot hari ini. Buka slot dari tombol +.', style: T.small),
+          Text(
+            'Belum ada slot hari ini. Buka slot dari tombol +.',
+            style: T.small,
+          ),
         const SizedBox(height: 14),
         SurfaceCard(
           radius: 18,
@@ -255,6 +299,55 @@ class _VenueHome extends ConsumerWidget {
   }
 }
 
+class _CourtStat {
+  const _CourtStat({
+    required this.court,
+    required this.taken,
+    required this.total,
+    required this.guests,
+  });
+
+  final int court;
+  final int taken;
+  final int total;
+  final List<String> guests;
+
+  int get percent => total == 0 ? 0 : (taken / total * 100).round();
+}
+
+List<VenueSlot> _rollup(List<VenueSlot> all, int days) {
+  final out = <VenueSlot>[];
+  for (var i = 0; i < days; i++) {
+    out.addAll(slotsOn(all, DateTime.now().add(Duration(days: i))));
+  }
+  return out;
+}
+
+List<_CourtStat> _courtStats(List<VenueSlot> slots) {
+  final byCourt = <int, List<VenueSlot>>{};
+  for (final s in slots) {
+    byCourt.putIfAbsent(s.court, () => []).add(s);
+  }
+  final stats = [
+    for (final entry in byCourt.entries)
+      _CourtStat(
+        court: entry.key,
+        taken: entry.value
+            .where(
+              (s) =>
+                  s.status == SlotStatus.booked || s.status == SlotStatus.lobby,
+            )
+            .length,
+        total: entry.value.length,
+        guests: [
+          for (final s in entry.value)
+            if (s.guest != null) s.guest!,
+        ],
+      ),
+  ]..sort((a, b) => b.percent.compareTo(a.percent));
+  return stats;
+}
+
 class _TodayRow extends StatelessWidget {
   const _TodayRow({required this.slot});
 
@@ -278,7 +371,7 @@ class _TodayRow extends StatelessWidget {
                 Text(
                   formatTime(slot.start),
                   style: const TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 12,
                     fontWeight: FontWeight.w800,
                     height: 1.1,
                     color: C.ink,
@@ -286,7 +379,7 @@ class _TodayRow extends StatelessWidget {
                 ),
                 Text(
                   formatTime(slot.end),
-                  style: const TextStyle(fontSize: 10, color: C.faint),
+                  style: const TextStyle(fontSize: 12, color: C.faint),
                 ),
               ],
             ),
@@ -300,7 +393,7 @@ class _TodayRow extends StatelessWidget {
                 Text(
                   'Lapangan ${slot.court}',
                   style: const TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: C.ink,
                   ),
@@ -349,9 +442,9 @@ class _HeroMeta extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            fontSize: 10.5,
+            fontSize: 12,
             fontWeight: FontWeight.w500,
-            color: Colors.white.withValues(alpha: 0.8),
+            color: Colors.white,
           ),
         ),
       ],
@@ -400,7 +493,7 @@ class _ActionTile extends StatelessWidget {
               Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 12.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w800,
                   color: C.ink,
                 ),
@@ -410,7 +503,7 @@ class _ActionTile extends StatelessWidget {
                 detail,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10.5, color: C.faint),
+                style: const TextStyle(fontSize: 12, color: C.faint),
               ),
             ],
           ),
@@ -426,20 +519,24 @@ class _VenueAccount extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      padding: kScreenPad,
       children: [
         const Text('Akun venue', style: T.h1),
         const SizedBox(height: 4),
         Text('Terpisah dari akun pemain.', style: T.small),
         const SizedBox(height: 16),
         SportPanel(
-          gradient: const [Color(0xFF9C90FF), Color(0xFF6C5CE0)],
+          gradient: C.amberPanel,
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Pill('Saldo pencairan', background: Colors.white24),
+              Pill(
+                'Saldo pencairan',
+                color: Colors.white,
+                background: Colors.black.withValues(alpha: 0.2),
+              ),
               const SizedBox(height: 9),
               Text(
                 rupiah(venueProfile.payout),
@@ -448,16 +545,13 @@ class _VenueAccount extends ConsumerWidget {
                   fontWeight: FontWeight.w800,
                   letterSpacing: -1,
                   height: 1,
-                  color: C.ink,
+                  color: Colors.white,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 'Dicairkan tiap Senin · fee 5%',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.white.withValues(alpha: 0.8),
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.white),
               ),
             ],
           ),
@@ -524,7 +618,7 @@ class _VenueAccount extends ConsumerWidget {
         SebarButton(
           label: 'Keluar ke akun pemain',
           icon: Icons.swap_horiz,
-          color: C.purple,
+          color: C.teal,
           onPressed: () {
             ref.read(authProvider.notifier).logout();
             context.go('/login');
@@ -563,13 +657,13 @@ class _AccountRow extends StatelessWidget {
             child: Text(
               label,
               style: const TextStyle(
-                fontSize: 12.5,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: C.ink,
               ),
             ),
           ),
-          Text(value, style: const TextStyle(fontSize: 11.5, color: C.muted)),
+          Text(value, style: const TextStyle(fontSize: 12, color: C.muted)),
           const SizedBox(width: 4),
           const Icon(Icons.chevron_right, size: 16, color: C.faint),
         ],
