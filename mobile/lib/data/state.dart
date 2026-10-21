@@ -21,12 +21,13 @@ extension SportX on Sport {
     Sport.minisoccer => Icons.sports_football,
   };
 
-  /// Warna panel per cabang, dipakai hero & kartu.
+  /// Warna panel per cabang. Semua varian pekat supaya teks putih
+  /// di atasnya lolos kontras WCAG untuk teks kecil.
   List<Color> get gradient => switch (this) {
-    Sport.badminton => const [Color(0xFFFF7A93), Color(0xFFE8436A)],
-    Sport.futsal => const [Color(0xFF45DDA0), Color(0xFF17A86E)],
-    Sport.volley => const [Color(0xFF9C90FF), Color(0xFF6C5CE0)],
-    Sport.minisoccer => const [Color(0xFFFFBB6B), Color(0xFFE07B2E)],
+    Sport.badminton => C.pinkPanel,
+    Sport.futsal => C.tealPanel,
+    Sport.volley => C.purplePanel,
+    Sport.minisoccer => C.amberPanel,
   };
 }
 
@@ -79,6 +80,80 @@ const venueProfile = (
   joinedAt: 'Mitra sejak Mar 2024',
 );
 
+/// Venue + aturan harga sewa per jam. Harga akhir mengikuti hari:
+/// Senin–Jumat memakai tarif weekday, Sabtu–Minggu tarif weekend.
+class VenueInfo {
+  const VenueInfo({
+    required this.name,
+    required this.city,
+    required this.courts,
+    required this.weekdayRate,
+    required this.weekendRate,
+    this.openHour = 6,
+    this.closeHour = 22,
+  });
+
+  final String name;
+  final String city;
+  final int courts;
+  final int weekdayRate;
+  final int weekendRate;
+  final int openHour;
+  final int closeHour;
+
+  bool isWeekend(DateTime day) => day.weekday >= DateTime.saturday;
+
+  int rateOn(DateTime day) => isWeekend(day) ? weekendRate : weekdayRate;
+
+  String get rateLabel =>
+      'Weekday Rp${_short(weekdayRate)}/jam · Weekend Rp${_short(weekendRate)}/jam';
+
+  static String _short(int value) {
+    if (value >= 1000) {
+      final k = value / 1000;
+      final text = k == k.roundToDouble()
+          ? k.round().toString()
+          : k.toStringAsFixed(1);
+      return '$text rb';
+    }
+    return '$value';
+  }
+}
+
+const venues = <VenueInfo>[
+  VenueInfo(
+    name: 'GOR C-Tra Arena',
+    city: 'Bandung',
+    courts: 2,
+    weekdayRate: 100000,
+    weekendRate: 150000,
+  ),
+  VenueInfo(
+    name: 'Arena Futsal Dago',
+    city: 'Bandung',
+    courts: 3,
+    weekdayRate: 120000,
+    weekendRate: 160000,
+  ),
+  VenueInfo(
+    name: 'GOR Sumarecon',
+    city: 'Jakarta',
+    courts: 2,
+    weekdayRate: 150000,
+    weekendRate: 200000,
+  ),
+  VenueInfo(
+    name: 'Lapangan Sutos',
+    city: 'Surabaya',
+    courts: 4,
+    weekdayRate: 175000,
+    weekendRate: 225000,
+  ),
+];
+
+VenueInfo venueByName(String name) =>
+    venues.firstWhere((v) => v.name == name, orElse: () => venues.first);
+
 /// ── Jadwal venue ─────────────────────────────────────────────────────────
 
 enum SlotStatus { open, booked, lobby, closed }
@@ -127,6 +202,12 @@ class VenueSlot {
   /// Nama room atau pemesan saat slot terisi.
   final String? guest;
 
+  int get durationHours => end.difference(start).inHours;
+
+  /// Tarif yang tampil ke pemain selalu per jam.
+  int get pricePerHour =>
+      durationHours <= 0 ? price : (price / durationHours).round();
+
   VenueSlot copyWith({SlotStatus? status, int? price, String? guest}) =>
       VenueSlot(
         id: id,
@@ -144,8 +225,12 @@ DateTime _day(int offset) {
   return DateTime(n.year, n.month, n.day + offset);
 }
 
-DateTime _slotAt(int dayOffset, int hour) =>
-    DateTime(_day(dayOffset).year, _day(dayOffset).month, _day(dayOffset).day, hour);
+DateTime _slotAt(int dayOffset, int hour) => DateTime(
+  _day(dayOffset).year,
+  _day(dayOffset).month,
+  _day(dayOffset).day,
+  hour,
+);
 
 class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
   @override
@@ -287,10 +372,11 @@ final venueSlotsProvider =
 
 List<VenueSlot> slotsOn(List<VenueSlot> all, DateTime day) {
   final d = DateTime(day.year, day.month, day.day);
-  final list = all
-      .where((s) => DateTime(s.start.year, s.start.month, s.start.day) == d)
-      .toList()
-    ..sort((a, b) => a.start.compareTo(b.start));
+  final list =
+      all
+          .where((s) => DateTime(s.start.year, s.start.month, s.start.day) == d)
+          .toList()
+        ..sort((a, b) => a.start.compareTo(b.start));
   return list;
 }
 
@@ -421,8 +507,24 @@ class WalletEntry {
   final DateTime at;
 }
 
+/// Nama jenis mutasi untuk pengguna — kode internal tidak ditampilkan.
+extension WalletEntryX on WalletEntry {
+  String get typeLabel => switch (type) {
+    'TOPUP' => 'Top up',
+    'HOLD' => 'Dana dikunci',
+    'RELEASE' => 'Dana dilepas',
+    'CAPTURE' => 'Pembayaran',
+    'PENALTY' => 'Denda',
+    _ => 'Mutasi',
+  };
+}
+
 class Wallet {
-  const Wallet({required this.balance, required this.held, required this.entries});
+  const Wallet({
+    required this.balance,
+    required this.held,
+    required this.entries,
+  });
 
   final int balance;
   final int held;
@@ -430,15 +532,12 @@ class Wallet {
 
   int get available => balance - held;
 
-  Wallet copyWith({
-    int? balance,
-    int? held,
-    List<WalletEntry>? entries,
-  }) => Wallet(
-    balance: balance ?? this.balance,
-    held: held ?? this.held,
-    entries: entries ?? this.entries,
-  );
+  Wallet copyWith({int? balance, int? held, List<WalletEntry>? entries}) =>
+      Wallet(
+        balance: balance ?? this.balance,
+        held: held ?? this.held,
+        entries: entries ?? this.entries,
+      );
 }
 
 class Booking {
@@ -631,8 +730,12 @@ class LobbiesNotifier extends Notifier<List<Lobby>> {
 
     if (full) {
       // Simulasi confirm_lobby(): hold dikonversi jadi capture + booking dibuat.
-      ref.read(walletProvider.notifier).capture(lobby.pricePerPerson, lobby.title);
-      ref.read(bookingsProvider.notifier).createFrom(lobby.copyWith(members: updated));
+      ref
+          .read(walletProvider.notifier)
+          .capture(lobby.pricePerPerson, lobby.title);
+      ref
+          .read(bookingsProvider.notifier)
+          .createFrom(lobby.copyWith(members: updated));
     }
     return null;
   }
@@ -707,7 +810,7 @@ class WalletNotifier extends Notifier<Wallet> {
       WalletEntry(
         type: 'TOPUP',
         amount: 250000,
-        label: 'Top up sandbox',
+        label: 'Top up saldo',
         at: DateTime.now().subtract(const Duration(days: 3)),
       ),
       WalletEntry(
@@ -719,7 +822,7 @@ class WalletNotifier extends Notifier<Wallet> {
       WalletEntry(
         type: 'TOPUP',
         amount: 50000,
-        label: 'Top up sandbox',
+        label: 'Top up saldo',
         at: DateTime.now().subtract(const Duration(days: 6)),
       ),
     ],
@@ -732,7 +835,7 @@ class WalletNotifier extends Notifier<Wallet> {
         WalletEntry(
           type: 'TOPUP',
           amount: amount,
-          label: 'Top up sandbox',
+          label: 'Top up saldo',
           at: DateTime.now(),
         ),
         ...state.entries,
@@ -811,8 +914,7 @@ class BookingsNotifier extends Notifier<List<Booking>> {
   ];
 
   void createFrom(Lobby lobby) {
-    final code =
-        'SEB-${(1000 + DateTime.now().millisecondsSinceEpoch % 9000)}';
+    final code = 'SEB-${(1000 + DateTime.now().millisecondsSinceEpoch % 9000)}';
     state = [
       Booking(
         id: 'bk${DateTime.now().millisecondsSinceEpoch}',
@@ -844,11 +946,17 @@ final bookingsProvider = NotifierProvider<BookingsNotifier, List<Booking>>(
 
 /// Filter pencarian di Home.
 class Filter {
-  const Filter({this.sport, this.city = 'Semua kota', this.minScore = 0});
+  const Filter({
+    this.sport,
+    this.city = 'Semua kota',
+    this.minScore = 0,
+    this.query = '',
+  });
 
   final Sport? sport;
   final String city;
   final int minScore;
+  final String query;
 }
 
 class FilterNotifier extends Notifier<Filter> {
@@ -859,18 +967,28 @@ class FilterNotifier extends Notifier<Filter> {
     sport: sport,
     city: state.city,
     minScore: state.minScore,
+    query: state.query,
   );
 
   void setCity(String city) => state = Filter(
     sport: state.sport,
     city: city,
     minScore: state.minScore,
+    query: state.query,
   );
 
   void setMinScore(int score) => state = Filter(
     sport: state.sport,
     city: state.city,
     minScore: score,
+    query: state.query,
+  );
+
+  void setQuery(String query) => state = Filter(
+    sport: state.sport,
+    city: state.city,
+    minScore: state.minScore,
+    query: query,
   );
 }
 
@@ -881,11 +999,18 @@ final filterProvider = NotifierProvider<FilterNotifier, Filter>(
 final filteredLobbiesProvider = Provider<List<Lobby>>((ref) {
   final f = ref.watch(filterProvider);
   final all = ref.watch(lobbiesProvider);
+  final needle = f.query.trim().toLowerCase();
   return all.where((l) {
     if (l.access == LobbyAccess.link) return false;
     if (f.sport != null && l.sport != f.sport) return false;
     if (f.city != 'Semua kota' && l.city != f.city) return false;
     if (l.minReliability > f.minScore && f.minScore > 0) return false;
+    if (needle.isNotEmpty) {
+      final haystack =
+          '${l.title} ${l.venue} ${l.city} ${l.court} ${l.sport.label}'
+              .toLowerCase();
+      if (!haystack.contains(needle)) return false;
+    }
     return l.status == LobbyStatus.open || l.status == LobbyStatus.filled;
   }).toList();
 });

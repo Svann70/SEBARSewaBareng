@@ -2,8 +2,8 @@
 
 Frontend MVP untuk patungan sewa lapangan olahraga. Acuan desain: `../SDD_SEBAR.md`
 §7 (design token, peta navigasi, layar) dengan bahasa visual dari
-`DesignReference/` (bidang diagonal, kartu gelap, angka besar, dock bawah
-dengan aksi utama di tengah).
+`DesignReference/DesignNew.jpg` (kanvas krem, kartu krem, panel pekat
+teal/pink/ungu/amber, angka besar, dock bawah dengan aksi utama di tengah).
 
 ## Jalan
 
@@ -11,7 +11,7 @@ dengan aksi utama di tengah).
 flutter pub get
 flutter run                 # Android/iOS
 flutter run -d chrome       # web (cek cepat)
-flutter test                # 11 tes
+flutter test                # 19 tes
 ```
 
 APK: `flutter build apk --debug` → `build/app/outputs/flutter-apk/`.
@@ -21,13 +21,13 @@ APK: `flutter build apk --debug` → `build/app/outputs/flutter-apk/`.
 | Route | Layar | Isi |
 |---|---|---|
 | `/login` | Auth | Pilih akun Pemain atau Venue, email/password |
-| `/home` | Beranda pemain | Saldo, skor, filter lingkaran olahraga, linimasa room, tiket |
+| `/home` | Beranda pemain | Kolom cari, saldo, skor, filter lingkaran olahraga, linimasa room |
 | `/lobby/:id` | Detail room | Header gradien + kartu ringkasan bertumpuk (AppDesign2) |
 | - | Sheet join | Split bill, sandi room (jika privat), saldo, checkbox setuju |
-| `/create` | Buat room | Split bill live, akses publik/link/sandi, kuota/harga/skor |
+| `/create` | Buat room | Pilih venue + lapangan (bukan ketik manual), harga ikut tarif venue/jam, akses publik/link/sandi |
 | `/community` | Komunitas | Chat 4 kanal, kirim pesan, waktu lokal |
 | `/ticket/:id` | Tiket QR | QR, kode booking, simulasi scan |
-| - | Dompet | Saldo tersedia/terkunci, ledger, top up sandbox |
+| - | Dompet | Saldo tersedia/terkunci, riwayat mutasi, top up |
 | - | Profil | Skor + progress, riwayat delta, statistik |
 | `/venue` | Shell venue | Beranda omzet, jadwal slot, scan, akun venue + pencairan |
 | `/venue/analytics` | Analytics venue | Omzet, okupansi, peak hours, tren pendapatan |
@@ -53,7 +53,9 @@ Sumber data `venueSlotsProvider` di `lib/data/state.dart`:
 - Slot punya lapangan, jam, harga, dan status (`Kosong`, `Terisi`,
   `Room berjalan`, `Ditutup`).
 - `VenueSlotsNotifier.add()` menolak slot yang tumpang tindih di lapangan
-  yang sama — balasan 409 di server nanti, validasi UI sekarang.
+  yang sama — validasi UI sekarang, nanti pindah ke server.
+- Sheet tambah slot mengikuti tarif venue: weekday/weekend per jam × durasi
+  (1–3 jam), harga dihitung otomatis.
 - Tab Jadwal: strip 7 hari, filter lapangan, ringkasan terisi/kosong/potensi,
   daftar per lapangan. Tap slot membuka sheet tutup/buka dan ubah harga.
 - Slot `Terisi` terkunci; hanya slot kosong yang bisa ditutup.
@@ -84,7 +86,7 @@ lib/
 ├── app.dart              # MaterialApp.router + shell dock
 ├── core/theme.dart       # token warna & tipografi
 ├── core/money.dart       # split bill, kebijakan penalti, format Rupiah
-├── core/widgets.dart     # SportPanel, Pill, dock, sheet, badge skor
+├── core/widgets.dart     # panel, pill, dock, count card, rank row, segmented
 ├── data/state.dart       # model + Riverpod (room, wallet, booking, chat, filter)
 └── features/{auth,home,lobby,create,booking,wallet,profile,community,venue}/
 ```
@@ -95,30 +97,33 @@ sudah dibaca dari state, bukan dihitung di widget.
 
 ## Warna
 
-Mengikuti `DesignReference/AppDesign1..4.png`: latar nyaris hitam `#0A0A0D`,
-kartu `#141419`, aksen pink `#FF5F7E` untuk aksi utama dan FAB, ungu
-`#8A7BF7` untuk panel info, hijau `#2FD08A` untuk status aman dan omzet,
-oranye `#F2A25C` untuk zona denda. Teks putih `#FFFFFF`, muted `#9A9AA8`.
+Mengikuti `DesignReference/DesignNew.jpg`: kanvas krem hangat `#F6EFE7`, kartu
+`#FFFCF6`, teks ink `#1C2B29`. Aksen pink `#C93F62` (`C.pinkFill` `#EE5A7E`
+untuk bidang non-teks) untuk aksi utama dan saldo, teal `#2E7D70` untuk
+omzet/okupansi, amber `#A9660F` (`C.amberFill` `#EFA53A`) untuk denda. Panel
+pekat (`C.pinkPanel`, `C.tealPanel`, `C.amberPanel`) memakai teks putih dengan
+rasio kontras ≥ 4,5:1 untuk teks kecil; blok terang memakai teks ink.
 
 ## Bahasa visual
 
-Diambil langsung dari referensi:
+Diambil dari referensi:
 
-- **Kartu gradien dengan potongan diagonal** (`SportPanel`) - pink untuk
-  saldo, ungu untuk kuota/harga, hijau untuk omzet, oranye untuk kartu
-  lobby ketiga.
+- **Panel gradien pekat dengan potongan diagonal** (`SportPanel`) — teal
+  untuk saldo, pink untuk harga, ungu untuk kuota/omzet, amber untuk denda.
 - **Angka besar sebagai fokus** (saldo, harga per orang, omzet) di panel
   paling atas tiap layar.
-- **Dock bawah**: 2 tujuan kiri, 2 kanan, FAB pink di tengah tanpa label
-  supaya tidak menutupi ikon (perbaikan `BugDesignNavbar.png`).
+- **Dock bawah mengambang**: kapsul krem, 2 tujuan kiri, 2 kanan, FAB pink
+  di tengah tanpa label. Semua layar memakai `kScreenPad` (bawah 112) supaya
+  baris terakhir tidak tertutup dock + FAB.
+- **Skala tipografi**: 11 ukuran saja (12, 13, 15, 15.5, 18, 20, 24, 26, 32,
+  34, 40) lewat token `T`; tidak ada teks di bawah 12px.
 - **Daftar room sebagai linimasa**: tanggal di rel kiri, kartu room di kanan.
-  Kuota digambar sebagai titik, bukan progress bar (variasi bentuk).
-- **Filter olahraga berbentuk lingkaran gradien**, bukan chip kotak.
-- **Detail room bergaya AppDesign2**: header gradien penuh, kartu ringkasan
-  bertumpuk dengan cincin kuota di tengah, lalu Detail / Lokasi / Peserta.
-- **Pil status kecil** di atas latar transparan putih.
-- **Tiap layar beda bentuk**: Home linimasa + lingkaran, detail kartu
-  bertumpuk, wallet ledger baris, komunitas bubble, venue tile aksi.
+- **Filter olahraga berbentuk lingkaran**, bukan chip kotak.
+- **Detail room**: header gradien penuh, kartu ringkasan bertumpuk dengan
+  cincin kuota di tengah, lalu Detail / Lokasi / Peserta.
+- **Teks pengguna tanpa istilah internal**: kode ledger (TOPUP/CAPTURE)
+  dipetakan ke label manusia (`WalletEntryX.typeLabel`), pesan scan memakai
+  kalimat biasa.
 
 ## Tes
 

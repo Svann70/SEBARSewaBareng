@@ -51,7 +51,10 @@ void main() {
       slots.add(court: 1, start: at(9), end: at(11), price: 200000),
       'Slot bentrok dengan jadwal lain.',
     );
-    expect(slots.add(court: 1, start: at(6), end: at(8), price: 200000), isNull);
+    expect(
+      slots.add(court: 1, start: at(6), end: at(8), price: 200000),
+      isNull,
+    );
     expect(
       container.read(venueSlotsProvider).where((s) => s.court == 1).length,
       greaterThan(5),

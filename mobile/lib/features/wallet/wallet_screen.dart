@@ -17,57 +17,58 @@ class WalletScreen extends ConsumerWidget {
     return SafeArea(
       bottom: false,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: kScreenPad,
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'Dompet',
-                  style: TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.6,
-                    color: C.ink,
-                  ),
-                ),
-              ),
+              const Expanded(child: Text('Dompet', style: T.h1)),
               CircleIconButton(
                 icon: Icons.help_outline,
                 onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
-                      'Saldo tersedia = saldo − dana terkunci (hold).',
+                      'Saldo tersedia adalah saldo dikurangi dana yang '
+                      'masih terkunci di room.',
                     ),
                   ),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 2),
+          const Text(
+            'Patungan aman, dana terkunci sampai check-in.',
+            style: T.small,
+          ),
           const SizedBox(height: 16),
           SportPanel(
-            gradient: [Color(0xFFFF7A93), C.pinkDeep],
-            padding: const EdgeInsets.all(18),
+            gradient: C.pinkPanel,
+            radius: 30,
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Pill('Saldo tersedia', background: Colors.white24),
-                const SizedBox(height: 10),
+                Pill(
+                  'Saldo tersedia',
+                  color: Colors.white,
+                  background: Colors.black.withValues(alpha: 0.2),
+                ),
+                const SizedBox(height: 12),
                 Text(
                   rupiah(wallet.available),
                   style: const TextStyle(
-                    fontSize: 32,
+                    fontSize: 34,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: -1.6,
+                    letterSpacing: -1.8,
                     height: 1,
-                    color: C.ink,
+                    color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     _WalletStat('Saldo', rupiah(wallet.balance)),
-                    const SizedBox(width: 22),
+                    const SizedBox(width: 26),
                     _WalletStat('Terkunci', rupiah(wallet.held)),
                   ],
                 ),
@@ -81,7 +82,7 @@ class WalletScreen extends ConsumerWidget {
                 child: SebarButton(
                   label: 'Top up',
                   icon: Icons.add_card,
-                  height: 48,
+                  height: 50,
                   onPressed: () => _topUp(context, ref),
                 ),
               ),
@@ -90,10 +91,12 @@ class WalletScreen extends ConsumerWidget {
                 child: GhostButton(
                   label: 'Tarik dana',
                   icon: Icons.arrow_outward,
-                  height: 48,
+                  height: 50,
                   onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Penarikan hanya tersedia setelah check-in.'),
+                      content: Text(
+                        'Penarikan tersedia setelah jadwal selesai.',
+                      ),
                     ),
                   ),
                 ),
@@ -107,7 +110,7 @@ class WalletScreen extends ConsumerWidget {
             const EmptyState(
               icon: Icons.receipt_long_outlined,
               title: 'Belum ada mutasi',
-              message: 'Setiap hold, capture, dan refund akan muncul di sini.',
+              message: 'Setiap top up, pembayaran, dan refund muncul di sini.',
             )
           else
             for (final e in wallet.entries)
@@ -117,18 +120,27 @@ class WalletScreen extends ConsumerWidget {
               ),
           const SizedBox(height: 10),
           SurfaceCard(
+            radius: 22,
             child: Row(
               children: [
-                const Icon(
-                  Icons.verified_user_outlined,
-                  size: 17,
-                  color: C.green,
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: C.tealSoft,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.verified_user_outlined,
+                    size: 18,
+                    color: C.teal,
+                  ),
                 ),
-                const SizedBox(width: 9),
-                Expanded(
+                const SizedBox(width: 11),
+                const Expanded(
                   child: Text(
-                    'Semua mutasi punya baris ledger. sum(ledger) = saldo, '
-                    'bisa diaudit kapan saja.',
+                    'Setiap transaksi tercatat otomatis dan bisa diperiksa '
+                    'kapan saja.',
                     style: T.small,
                   ),
                 ),
@@ -145,13 +157,13 @@ class WalletScreen extends ConsumerWidget {
     final amount = await showModalBottomSheet<int>(
       context: context,
       builder: (_) => SheetWrap(
-        title: 'Top up sandbox',
+        title: 'Top up saldo',
         children: [
           const Text(
-            'Nominal masuk langsung ke saldo dan tercatat sebagai entri TOPUP.',
+            'Pilih nominal. Saldo langsung masuk dan bisa dipakai join room.',
             style: T.small,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -163,16 +175,20 @@ class WalletScreen extends ConsumerWidget {
                   child: InkWell(
                     borderRadius: BorderRadius.circular(999),
                     onTap: () => Navigator.pop(context, o),
-                    child: Padding(
+                    child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 11,
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: C.line),
                       ),
                       child: Text(
                         rupiah(o),
                         style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
                           color: C.ink,
                         ),
                       ),
@@ -208,18 +224,19 @@ class _WalletStat extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-            color: Colors.white70,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
           ),
         ),
+        const SizedBox(height: 2),
         Text(
           value,
           style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: C.ink,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
           ),
         ),
       ],
@@ -235,36 +252,35 @@ class _LedgerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, color, bg) = switch (entry.type) {
-      'TOPUP' => (Icons.add_circle_outline, C.green, C.mint),
-      'CAPTURE' => (Icons.shopping_bag_outlined, C.greenDeep, C.surfaceAlt),
-      'HOLD' => (Icons.lock_outline, C.amber, C.butter),
+      'TOPUP' => (Icons.add_circle_outline, C.green, C.tealSoft),
+      'CAPTURE' => (Icons.shopping_bag_outlined, C.purple, C.purpleSoft),
+      'HOLD' => (Icons.lock_outline, C.amber, C.amberSoft),
       'RELEASE' => (Icons.lock_open_outlined, C.muted, C.surfaceAlt),
-      'PENALTY' => (Icons.gavel_outlined, C.coral, C.pink.withValues(alpha: 0.16)),
+      'PENALTY' => (Icons.gavel_outlined, C.coral, C.pinkSoft),
       _ => (Icons.swap_horiz, C.muted, C.surfaceAlt),
     };
     final amount = switch (entry.type) {
-      'HOLD' => 'dikunci',
-      'RELEASE' => 'dilepas',
+      'HOLD' => 'Dikunci',
+      'RELEASE' => 'Dilepas',
       _ => '${entry.amount < 0 ? '-' : '+'}${rupiah(entry.amount.abs())}',
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
         color: C.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: C.line),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         children: [
           Container(
-            width: 34,
-            height: 34,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               color: bg,
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: BorderRadius.circular(13),
             ),
-            child: Icon(icon, size: 16, color: color),
+            child: Icon(icon, size: 18, color: color),
           ),
           const SizedBox(width: 11),
           Expanded(
@@ -276,16 +292,16 @@ class _LedgerRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                     color: C.ink,
                   ),
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  '${entry.type} · ${formatDate(entry.at)} '
+                  '${entry.typeLabel} · ${formatDate(entry.at)} '
                   '${formatTime(entry.at)}',
-                  style: const TextStyle(fontSize: 10.5, color: C.muted),
+                  style: T.caption,
                 ),
               ],
             ),
@@ -294,9 +310,13 @@ class _LedgerRow extends StatelessWidget {
           Text(
             amount,
             style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: entry.amount < 0 ? C.ink : C.greenDeep,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: entry.type == 'HOLD' || entry.type == 'RELEASE'
+                  ? C.muted
+                  : entry.amount < 0
+                  ? C.ink
+                  : C.green,
             ),
           ),
         ],
