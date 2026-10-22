@@ -6,14 +6,33 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../data/state.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  bool _busy = false;
+
+  Future<void> _logout() async {
+    setState(() => _busy = true);
+    await ref.read(authProvider.notifier).signOut();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    context.go('/login');
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final bookings = ref.watch(bookingsProvider);
-    final played = bookings.length + 11;
-    final checkIn = bookings.where((b) => b.checkedIn).length + 9;
+    final user = ref.watch(sessionProvider);
+    final played = bookings.length;
+    final checkIn = bookings.where((b) => b.checkedIn).length;
+    final initial = (user?.fullName.trim().isEmpty ?? true)
+        ? 'R'
+        : user!.fullName.trim()[0].toUpperCase();
 
     return SafeArea(
       bottom: false,
@@ -24,7 +43,13 @@ class ProfileScreen extends ConsumerWidget {
           const SizedBox(height: 2),
           const Text('Rekam jejak main kamu.', style: T.small),
           const SizedBox(height: 16),
-          _ProfileHero(played: played, checkIn: checkIn),
+          _ProfileHero(
+            name: user?.fullName ?? 'Raka',
+            email: user?.email ?? 'raka@sebar.app',
+            initial: initial,
+            played: played,
+            checkIn: checkIn,
+          ),
           const SizedBox(height: 22),
           const SectionHeader('Riwayat main'),
           const SizedBox(height: 10),
@@ -67,16 +92,24 @@ class ProfileScreen extends ConsumerWidget {
           SurfaceCard(
             radius: 24,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-            child: const Column(
+            child: Column(
               children: [
-                _MenuRow(
+                const _MenuRow(
                   icon: Icons.receipt_long_outlined,
                   label: 'Riwayat pembayaran',
                 ),
-                Divider(),
-                _MenuRow(icon: Icons.help_outline, label: 'Pusat bantuan'),
-                Divider(),
-                _MenuRow(icon: Icons.logout, label: 'Keluar', danger: true),
+                const Divider(),
+                const _MenuRow(
+                  icon: Icons.help_outline,
+                  label: 'Pusat bantuan',
+                ),
+                const Divider(),
+                _MenuRow(
+                  icon: Icons.logout,
+                  label: 'Keluar',
+                  danger: true,
+                  onTap: _busy ? null : _logout,
+                ),
               ],
             ),
           ),
@@ -87,8 +120,17 @@ class ProfileScreen extends ConsumerWidget {
 }
 
 class _ProfileHero extends StatelessWidget {
-  const _ProfileHero({required this.played, required this.checkIn});
+  const _ProfileHero({
+    required this.name,
+    required this.email,
+    required this.initial,
+    required this.played,
+    required this.checkIn,
+  });
 
+  final String name;
+  final String email;
+  final String initial;
   final int played;
   final int checkIn;
 
@@ -107,34 +149,34 @@ class _ProfileHero extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: C.primary,
+                  color: C.primarySoft,
                   shape: BoxShape.circle,
-                  border: Border.all(color: C.primarySoft, width: 4),
+                  border: Border.all(color: C.surface, width: 3),
                 ),
                 alignment: Alignment.center,
-                child: const Text(
-                  'R',
-                  style: TextStyle(
+                child: Text(
+                  initial,
+                  style: const TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    color: C.primary,
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Raka Pratama',
+                      name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: T.h3,
                     ),
-                    SizedBox(height: 1),
+                    const SizedBox(height: 1),
                     Text(
-                      'raka@sebar.app · Bandung',
+                      email,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: T.small,
@@ -152,36 +194,29 @@ class _ProfileHero extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: StatRing(
+                child: CountCard(
+                  icon: Icons.sports_soccer,
                   value: '$played',
                   label: 'Main',
-                  caption: 'sesi selesai',
-                  icon: Icons.sports_soccer,
-                  progress: played / 40,
-                  color: C.primary,
                 ),
               ),
               Expanded(
-                child: StatRing(
+                child: CountCard(
+                  icon: Icons.check_circle_outline,
                   value: '$checkIn',
-                  label: 'Check-in',
-                  caption: 'tepat waktu',
-                  icon: Icons.qr_code_scanner,
-                  progress: played == 0 ? 0 : checkIn / played,
-                  color: C.primaryFill,
+                  label: 'Hadir',
+                  color: C.primaryCheck,
                 ),
               ),
               Expanded(
-                child: StatRing(
-                  value: '1',
-                  label: 'No-show',
-                  caption: 'dari 12 sesi',
-                  icon: Icons.block,
-                  progress: 1 / 12,
+                child: CountCard(
+                  icon: Icons.event_busy,
+                  value: '${(played - checkIn).clamp(0, played)}',
+                  label: 'Tidak datang',
                   color: C.amber,
+                  tint: C.amberSoft,
                 ),
               ),
             ],
@@ -261,33 +296,38 @@ class _MenuRow extends StatelessWidget {
     required this.icon,
     required this.label,
     this.danger = false,
+    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final bool danger;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Row(
-        children: [
-          Icon(icon, size: 19, color: danger ? C.danger : C.muted),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: danger ? C.danger : C.ink,
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 19, color: danger ? C.danger : C.muted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: danger ? C.danger : C.ink,
+                ),
               ),
             ),
-          ),
-          if (!danger)
-            const Icon(Icons.chevron_right, size: 20, color: C.muted),
-        ],
+            if (!danger)
+              const Icon(Icons.chevron_right, size: 20, color: C.muted),
+          ],
+        ),
       ),
     );
   }

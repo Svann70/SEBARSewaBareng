@@ -18,12 +18,42 @@ export async function listVenues(ownerId) {
   return rows;
 }
 
-export async function listSlots(ownerId, date) {
+export async function listSlots(ownerId, { date, venueId }) {
   const { rows } = await query(
-    `${SLOT_SELECT} WHERE v.owner_id = $1 AND ${onDateWib('s.start_at', '$2')} ORDER BY c.name, s.start_at`,
-    [ownerId, date],
+    `${SLOT_SELECT} WHERE v.owner_id = $1 AND ${onDateWib('s.start_at', '$2')}
+       AND ($3::uuid IS NULL OR c.venue_id = $3) ORDER BY c.name, s.start_at`,
+    [ownerId, date, venueId ?? null],
   );
   return rows;
+}
+
+const COURT_RETURNING = `id, venue_id AS "venueId", name, sport_type AS sport,
+  price_per_hour AS "pricePerHour", capacity, status`;
+
+// Court price lives here (courts.price_per_hour): every slot inherits it at creation.
+export async function createCourt(ownerId, { venueId, name, sport, pricePerHour, capacity }) {
+  const owned = await query('SELECT id FROM venues WHERE id = $1 AND owner_id = $2', [venueId, ownerId]);
+  if (!owned.rows[0]) throw new AppError(404, 'NOT_FOUND', 'Venue tidak ditemukan.');
+  const { rows } = await query(
+    `INSERT INTO courts (venue_id, name, sport_type, price_per_hour, capacity)
+     VALUES ($1, $2, $3, $4, $5) RETURNING ${COURT_RETURNING}`,
+    [venueId, name, sport, pricePerHour, capacity],
+  );
+  return rows[0];
+}
+
+export async function updateCourt(ownerId, courtId, { name, pricePerHour, capacity, status }) {
+  const { rows } = await query(
+    `UPDATE courts c SET name = COALESCE($3, c.name), price_per_hour = COALESCE($4::numeric, c.price_per_hour),
+            capacity = COALESCE($5::smallint, c.capacity), status = COALESCE($6::court_status, c.status)
+       FROM venues v
+      WHERE c.venue_id = v.id AND c.id = $1 AND v.owner_id = $2
+      RETURNING c.id, c.venue_id AS "venueId", c.name, c.sport_type AS sport,
+                c.price_per_hour AS "pricePerHour", c.capacity, c.status`,
+    [courtId, ownerId, name ?? null, pricePerHour ?? null, capacity ?? null, status ?? null],
+  );
+  if (!rows[0]) throw new AppError(404, 'NOT_FOUND', 'Lapangan tidak ditemukan.');
+  return rows[0];
 }
 
 async function loadSlot(id) {

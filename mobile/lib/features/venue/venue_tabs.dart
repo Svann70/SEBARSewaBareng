@@ -23,6 +23,11 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
   @override
   Widget build(BuildContext context) {
     final all = ref.watch(venueSlotsProvider);
+    final notifier = ref.read(venueSlotsProvider.notifier);
+    final venues = notifier.venues;
+    final courtCount = notifier.courts.isEmpty
+        ? venueProfile.courts
+        : notifier.courts.length;
     final day = DateTime.now().add(Duration(days: _day));
     final slots = slotsOn(
       all,
@@ -61,7 +66,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
                   ),
                   Text(
                     '${formatDate(day)} · '
-                    '${_court == 0 ? '${venueProfile.courts} lapangan' : 'Lapangan $_court'}',
+                    '${_court == 0 ? '$courtCount lapangan' : 'Lapangan $_court'}',
                     style: T.small,
                   ),
                 ],
@@ -75,6 +80,23 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
             ),
           ],
         ),
+        if (venues.length > 1) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 32,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final v in venues)
+                  _CourtChip(
+                    label: v.name,
+                    selected: v.id == notifier.venueId,
+                    onTap: () => notifier.selectVenue(v.id),
+                  ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         _DayStrip(selected: _day, onPick: (d) => setState(() => _day = d)),
         const SizedBox(height: 12),
@@ -112,7 +134,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
                 selected: _court == 0,
                 onTap: () => setState(() => _court = 0),
               ),
-              for (var c = 1; c <= venueProfile.courts; c++)
+              for (var c = 1; c <= courtCount; c++)
                 _CourtChip(
                   label: 'Lapangan $c',
                   selected: _court == c,
@@ -134,7 +156,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
             ),
           )
         else
-          for (var c = 1; c <= venueProfile.courts; c++)
+          for (var c = 1; c <= courtCount; c++)
             if (_court == 0 || _court == c) ..._courtSection(slots, c),
         const SizedBox(height: 6),
         SurfaceCard(
@@ -346,15 +368,20 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
                     color: slot.status == SlotStatus.closed
                         ? C.primary
                         : C.danger,
-                    onPressed: () {
-                      ref
+                    onPressed: () async {
+                      final next = slot.status == SlotStatus.closed
+                          ? SlotStatus.open
+                          : SlotStatus.closed;
+                      final error = await ref
                           .read(venueSlotsProvider.notifier)
-                          .setStatus(
-                            slot.id,
-                            slot.status == SlotStatus.closed
-                                ? SlotStatus.open
-                                : SlotStatus.closed,
-                          );
+                          .setStatusRemote(slot.id, next);
+                      if (!context.mounted) return;
+                      if (error != null) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(error)));
+                        return;
+                      }
                       Navigator.pop(context);
                     },
                   ),
@@ -408,7 +435,11 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
     );
     final price = int.tryParse((value ?? '').replaceAll('.', ''));
     if (price == null || price < 0) return;
-    ref.read(venueSlotsProvider.notifier).setPrice(slot.id, price);
+    final error = await ref
+        .read(venueSlotsProvider.notifier)
+        .setPriceRemote(slot.id, price);
+    if (!mounted || error == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
   }
 }
 
@@ -432,6 +463,8 @@ class _PhotoChoice extends StatelessWidget {
           child: Image.network(
             url,
             fit: BoxFit.cover,
+            cacheWidth: 280,
+            filterQuality: FilterQuality.medium,
             errorBuilder: (_, _, _) => const _PhotoChoiceFallback(),
             loadingBuilder: (_, child, progress) =>
                 progress == null ? child : const _PhotoChoiceFallback(),
@@ -482,9 +515,9 @@ class _DayStrip extends StatelessWidget {
               duration: const Duration(milliseconds: 150),
               width: 48,
               decoration: BoxDecoration(
-                color: active ? C.primary : C.surface,
+                color: active ? C.primaryFill : C.surface,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: active ? C.primary : C.line),
+                border: Border.all(color: active ? C.primaryFill : C.line),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -495,7 +528,7 @@ class _DayStrip extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: active ? Colors.white : C.faint,
+                      color: active ? C.ink : C.faint,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -503,9 +536,9 @@ class _DayStrip extends StatelessWidget {
                     '${d.day}',
                     style: TextStyle(
                       fontSize: 15,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                       height: 1,
-                      color: active ? Colors.white : C.ink,
+                      color: C.ink,
                     ),
                   ),
                 ],
@@ -573,16 +606,16 @@ class _CourtChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 13),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected ? C.primary : C.surface,
+            color: selected ? C.primaryFill : C.surface,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: selected ? C.primary : C.line),
+            border: Border.all(color: selected ? C.primaryFill : C.line),
           ),
           child: Text(
             label,
             style: TextStyle(
               fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: selected ? Colors.white : C.muted,
+              fontWeight: FontWeight.w600,
+              color: selected ? C.ink : C.muted,
             ),
           ),
         ),
@@ -740,23 +773,32 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
   int _hour = 8;
   int _duration = 2;
 
-  void _save() {
-    final venue = venueByName(venueProfile.name);
-    final rate = venue.rateOn(widget.day);
+  Future<void> _save() async {
+    final courts = ref.read(venueSlotsProvider.notifier).courts;
+    final court = _court <= courts.length ? courts[_court - 1] : null;
+    if (court == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Akun venue ini belum punya lapangan aktif.'),
+        ),
+      );
+      return;
+    }
     final start = DateTime(
       widget.day.year,
       widget.day.month,
       widget.day.day,
       _hour,
     );
-    final error = ref
+    final error = await ref
         .read(venueSlotsProvider.notifier)
-        .add(
-          court: _court,
+        .addRemote(
+          courtId: court.id,
           start: start,
-          end: start.add(Duration(hours: _duration)),
-          price: rate * _duration,
+          duration: Duration(hours: _duration),
+          pricePerHour: court.pricePerHour,
         );
+    if (!mounted) return;
     if (error != null) {
       ScaffoldMessenger.of(
         context,
@@ -767,66 +809,229 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Slot Lapangan $_court ${_hour.toString().padLeft(2, '0')}:00 '
+          'Slot ${court.name} ${_hour.toString().padLeft(2, '0')}:00 '
           'selama $_duration jam sudah dibuka.',
         ),
       ),
     );
   }
 
+  /// Tarif per jam milik lapangan, bukan milik slot.
+  Future<void> _editCourtPrice(ApiCourt court) async {
+    final controller = TextEditingController(text: '${court.pricePerHour}');
+    final value = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tarif lapangan', style: T.h2),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${court.name} · per jam', style: T.small),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(prefixText: 'Rp'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Slot yang sudah dibuka tetap memakai harga lamanya.',
+              style: T.caption,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: C.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Simpan', style: TextStyle(color: C.primary)),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final price = int.tryParse((value ?? '').replaceAll('.', ''));
+    if (price == null) return;
+    final error = await ref
+        .read(venueSlotsProvider.notifier)
+        .setCourtPriceRemote(court.id, price);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error ?? 'Tarif ${court.name} diperbarui.')),
+    );
+  }
+
+  Future<void> _addCourt() async {
+    final name = TextEditingController();
+    final price = TextEditingController(text: '100000');
+    final capacity = TextEditingController(text: '12');
+    var sport = Sport.badminton;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Tambah lapangan', style: T.h2),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Nama lapangan'),
+              ),
+              DropdownButton<Sport>(
+                value: sport,
+                isExpanded: true,
+                items: [
+                  for (final s in Sport.values)
+                    DropdownMenuItem(value: s, child: Text(s.label)),
+                ],
+                onChanged: (v) => setDialog(() => sport = v ?? sport),
+              ),
+              TextField(
+                controller: price,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Tarif per jam',
+                  prefixText: 'Rp',
+                ),
+              ),
+              TextField(
+                controller: capacity,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Kapasitas orang'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal', style: TextStyle(color: C.muted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Simpan', style: TextStyle(color: C.primary)),
+            ),
+          ],
+        ),
+      ),
+    );
+    final pricePerHour = int.tryParse(price.text.trim());
+    final cap = int.tryParse(capacity.text.trim());
+    final courtName = name.text.trim();
+    name.dispose();
+    price.dispose();
+    capacity.dispose();
+    if (saved != true || !mounted) return;
+    final error = await ref
+        .read(venueSlotsProvider.notifier)
+        .addCourtRemote(
+          name: courtName,
+          sport: sport,
+          pricePerHour: pricePerHour ?? 0,
+          capacity: cap ?? 0,
+        );
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error ?? 'Lapangan $courtName ditambahkan.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final venue = venueByName(venueProfile.name);
-    final rate = venue.rateOn(widget.day);
+    final notifier = ref.watch(venueSlotsProvider.notifier);
+    final courts = notifier.courts;
+    final courtCount = courts.length;
+    final court = _court <= courts.length ? courts[_court - 1] : null;
+    final rate = court?.pricePerHour ?? 0;
     final total = rate * _duration;
-    final isWeekend = venue.isWeekend(widget.day);
 
     return SheetWrap(
       title: 'Tambah slot',
       children: [
         Text(
-          '${formatLongDate(widget.day)} · '
-          'tarif ${isWeekend ? 'weekend' : 'weekday'}',
+          '${notifier.venue?.name ?? 'Venue'} · ${formatLongDate(widget.day)}',
           style: T.small,
         ),
         const SizedBox(height: 14),
-        const Text('Lapangan', style: T.label),
-        const SizedBox(height: 7),
         Row(
           children: [
-            for (var c = 1; c <= venue.courts; c++) ...[
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _court = c),
-                  child: Container(
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _court == c ? C.primary : C.surface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _court == c ? C.primary : C.line,
+            const Text('Lapangan', style: T.label),
+            const Spacer(),
+            TextButton(
+              onPressed: _addCourt,
+              child: const Text('Tambah lapangan'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 7),
+        if (courts.isEmpty)
+          Text(
+            'Belum ada lapangan di akun venue ini. Slot tidak bisa dibuka '
+            'sebelum lapangan dibuat.',
+            style: T.small,
+          )
+        else
+          Row(
+            children: [
+              for (var c = 1; c <= courtCount; c++) ...[
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _court = c),
+                    child: Container(
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _court == c ? C.primaryFill : C.surface,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: _court == c ? C.primaryFill : C.line,
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      'Lapangan $c',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: _court == c ? Colors.white : C.ink,
+                      child: Text(
+                        courts[c - 1].name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: C.ink,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              if (c != venue.courts) const SizedBox(width: 8),
+                if (c != courtCount) const SizedBox(width: 8),
+              ],
             ],
-          ],
-        ),
+          ),
+        if (court != null) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Tarif ${rupiah(rate)}/jam · ${court.capacity} orang',
+                  style: T.caption,
+                ),
+              ),
+              TextButton(
+                onPressed: () => _editCourtPrice(court),
+                child: const Text('Ubah tarif'),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 14),
         CourtPhoto(
           venue: venueProfile.name,
-          court: 'Lapangan $_court',
+          court: court?.name ?? 'Lapangan $_court',
           height: 140,
           radius: 18,
         ),
@@ -848,16 +1053,16 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
                   width: 56,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: active ? C.primary : C.surface,
+                    color: active ? C.primaryFill : C.surface,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: active ? C.primary : C.line),
+                    border: Border.all(color: active ? C.primaryFill : C.line),
                   ),
                   child: Text(
                     '${h.toString().padLeft(2, '0')}:00',
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: active ? Colors.white : C.ink,
+                      fontWeight: FontWeight.w600,
+                      color: C.ink,
                     ),
                   ),
                 ),
@@ -878,18 +1083,18 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
                     height: 44,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: _duration == d ? C.primary : C.surface,
+                      color: _duration == d ? C.primaryFill : C.surface,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: _duration == d ? C.primary : C.line,
+                        color: _duration == d ? C.primaryFill : C.line,
                       ),
                     ),
                     child: Text(
                       '$d jam',
                       style: TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: _duration == d ? Colors.white : C.ink,
+                        fontWeight: FontWeight.w600,
+                        color: C.ink,
                       ),
                     ),
                   ),
@@ -936,7 +1141,11 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
           ),
         ),
         const SizedBox(height: 16),
-        SebarButton(label: 'Buka slot', icon: Icons.add, onPressed: _save),
+        SebarButton(
+          label: 'Buka slot',
+          icon: Icons.add,
+          onPressed: court == null ? null : _save,
+        ),
       ],
     );
   }
@@ -984,23 +1193,20 @@ class VenueAnalyticsTab extends StatelessWidget {
             children: [
               Pill(
                 'Omzet bulan ini',
-                color: Colors.white,
-                background: Colors.black.withValues(alpha: 0.2),
+                color: C.ink,
+                background: Colors.white.withValues(alpha: 0.5),
               ),
               const SizedBox(height: 10),
-              Text(
-                rupiah(venueSummary.revenue),
-                style: T.h1.copyWith(color: Colors.white),
-              ),
+              Text(rupiah(venueSummary.revenue), style: T.h1),
               const SizedBox(height: 6),
               Text(
                 'Fee SEBAR ${rupiah(venueSummary.fee)} · '
                 '${venueSummary.bookings} booking',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   height: 1.4,
-                  color: Colors.white,
+                  color: C.ink,
                 ),
               ),
             ],

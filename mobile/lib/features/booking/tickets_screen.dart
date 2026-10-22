@@ -6,240 +6,161 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../data/state.dart';
 
-class TicketsScreen extends ConsumerWidget {
+class TicketsScreen extends ConsumerStatefulWidget {
   const TicketsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TicketsScreen> createState() => _TicketsScreenState();
+}
+
+class _TicketsScreenState extends ConsumerState<TicketsScreen> {
+  int _tab = 0;
+
+  static const _tabs = ['Siap dipakai', 'Menunggu', 'Selesai'];
+
+  @override
+  Widget build(BuildContext context) {
     final bookings = ref.watch(bookingsProvider);
+    final now = DateTime.now();
+    final ready = bookings
+        .where((b) => b.end.isAfter(now) && !b.checkedIn)
+        .toList();
+    final done = bookings.where((b) => b.checkedIn || !b.end.isAfter(now));
+    final shown = switch (_tab) {
+      1 => <Booking>[],
+      2 => done.toList(),
+      _ => ready,
+    };
 
     return SafeArea(
       bottom: false,
-      child: ListView(
-        padding: kScreenPad,
-        children: [
-          const Text('Tiket saya', style: T.h1),
-          const SizedBox(height: 2),
-          const Text(
-            'Satu QR per peserta, hanya bisa discan sekali.',
-            style: T.small,
-          ),
-          const SizedBox(height: 16),
-          if (bookings.isEmpty)
-            EmptyState(
-              icon: Icons.qr_code_2,
-              title: 'Belum ada tiket',
-              message: 'Tiket terbit otomatis saat kuota lobby terpenuhi.',
-              action: GhostButton(
-                label: 'Cari lobby',
-                icon: Icons.search,
-                onPressed: () {},
+      child: RefreshIndicator(
+        color: C.primary,
+        backgroundColor: C.surface,
+        onRefresh: () async {
+          await ref.read(bookingsProvider.notifier).refresh();
+        },
+        child: ListView(
+          padding: kScreenPad,
+          children: [
+            const Text('Tiket', style: T.h1),
+            const SizedBox(height: 14),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (var i = 0; i < _tabs.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _Tab(
+                        label: i == 1 ? '${_tabs[i]} · 0' : _tabs[i],
+                        active: _tab == i,
+                        onTap: () => setState(() => _tab = i),
+                      ),
+                    ),
+                ],
               ),
-            )
-          else
-            for (final b in bookings)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _TicketCard(booking: b),
-              ),
-        ],
+            ),
+            const SizedBox(height: 14),
+            if (shown.isEmpty)
+              EmptyState(
+                icon: Icons.qr_code_2,
+                title: _tab == 1
+                    ? 'Tidak ada yang menunggu'
+                    : 'Belum ada tiket',
+                message: _tab == 1
+                    ? 'Tiket terbit otomatis begitu absen room penuh.'
+                    : 'Tiket terbit otomatis saat kuota room terpenuhi.',
+                action: GhostButton(
+                  label: 'Cari room',
+                  icon: Icons.search,
+                  onPressed: () => context.go('/home'),
+                ),
+              )
+            else
+              for (final b in shown)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: TicketTile(
+                    day: const [
+                      'Sen',
+                      'Sel',
+                      'Rab',
+                      'Kam',
+                      'Jum',
+                      'Sab',
+                      'Min',
+                    ][b.start.weekday - 1],
+                    date: '${b.start.day}',
+                    month: const [
+                      'Jan',
+                      'Feb',
+                      'Mar',
+                      'Apr',
+                      'Mei',
+                      'Jun',
+                      'Jul',
+                      'Agu',
+                      'Sep',
+                      'Okt',
+                      'Nov',
+                      'Des',
+                    ][b.start.month - 1],
+                    title: b.title,
+                    when:
+                        '${formatTime(b.start)}–${formatTime(b.end)} · '
+                        '${b.court}',
+                    place: b.venue,
+                    note: b.checkedIn ? 'Sudah check-in' : null,
+                    onTap: () => context.push('/ticket/${b.id}'),
+                  ),
+                ),
+            const SizedBox(height: 14),
+            Text(
+              'Tiket terbit otomatis saat absen room penuh. Tunjukkan QR ke '
+              'petugas venue sebelum main.',
+              style: T.caption,
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _TicketCard extends StatelessWidget {
-  const _TicketCard({required this.booking});
+class _Tab extends StatelessWidget {
+  const _Tab({required this.label, required this.active, required this.onTap});
 
-  final Booking booking;
-
-  @override
-  Widget build(BuildContext context) {
-    return SurfaceCard(
-      padding: EdgeInsets.zero,
-      onTap: () => context.push('/ticket/${booking.id}'),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: booking.sport.gradient.first.withValues(alpha: 0.13),
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(
-                    booking.sport.icon,
-                    size: 22,
-                    color: booking.sport.gradient.first,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        booking.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: T.h3,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${booking.venue} · ${booking.court}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: T.small,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Pill(
-                  booking.checkedIn ? 'Sudah masuk' : 'Siap discan',
-                  color: booking.checkedIn ? C.primary : C.amber,
-                  background: booking.checkedIn ? C.primarySoft : C.amberSoft,
-                ),
-              ],
-            ),
-          ),
-          const _TicketDivider(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Flexible(
-                        child: _Meta(
-                          icon: Icons.event_outlined,
-                          text: formatDate(booking.start),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Flexible(
-                        child: _Meta(
-                          icon: Icons.schedule,
-                          text:
-                              '${formatTime(booking.start)}–${formatTime(booking.end)}',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  booking.code,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                    color: C.muted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Meta extends StatelessWidget {
-  const _Meta({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: C.muted),
-        const SizedBox(width: 4),
-        Flexible(
+    return Material(
+      color: active ? C.primaryFill : C.surface,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          constraints: const BoxConstraints(minHeight: 44),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: active ? C.primaryFill : C.line),
+          ),
           child: Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            label,
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: C.ink,
+              color: active ? C.ink : C.muted,
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _TicketDivider extends StatelessWidget {
-  const _TicketDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 18,
-      child: Row(
-        children: [
-          const _Notch(),
-          Expanded(
-            child: CustomPaint(
-              painter: _DashPainter(),
-              child: const SizedBox(height: 18),
-            ),
-          ),
-          const _Notch(),
-        ],
       ),
     );
   }
-}
-
-class _Notch extends StatelessWidget {
-  const _Notch();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 18,
-      height: 18,
-      decoration: const BoxDecoration(
-        color: C.bg,
-        borderRadius: BorderRadius.all(Radius.circular(9)),
-      ),
-    );
-  }
-}
-
-class _DashPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = C.line
-      ..strokeWidth = 1;
-    const dash = 5.0;
-    const gap = 5.0;
-    var x = 0.0;
-    while (x < size.width) {
-      canvas.drawLine(
-        Offset(x, size.height / 2),
-        Offset((x + dash).clamp(0, size.width), size.height / 2),
-        paint,
-      );
-      x += dash + gap;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

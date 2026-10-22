@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/money.dart';
 import '../core/theme.dart';
+import 'api.dart';
 
 enum Sport { badminton, futsal, volley, minisoccer }
 
@@ -61,21 +62,176 @@ AccountRole roleForEmail(String email) {
       : AccountRole.player;
 }
 
+/// Profil pengguna yang sedang login (dari server).
+class SessionUser {
+  const SessionUser({
+    required this.id,
+    required this.email,
+    required this.fullName,
+    required this.role,
+    this.reliability = 100,
+  });
+
+  final String id;
+  final String email;
+  final String fullName;
+  final AccountRole role;
+  final int reliability;
+
+  factory SessionUser.fromJson(Map<String, dynamic> json) => SessionUser(
+    id: json['id'] as String? ?? '',
+    email: json['email'] as String? ?? '',
+    fullName: json['fullName'] as String? ?? '',
+    role: accountRoleFromApi(json['role'] as String?),
+    reliability: _asInt(json['reliabilityScore'], 100),
+  );
+}
+
+AccountRole accountRoleFromApi(String? value) =>
+    value == 'VENUE_ADMIN' ? AccountRole.venue : AccountRole.player;
+
+class SessionNotifier extends Notifier<SessionUser?> {
+  @override
+  SessionUser? build() => null;
+
+  void set(SessionUser? user) => state = user;
+}
+
+final sessionProvider = NotifierProvider<SessionNotifier, SessionUser?>(
+  SessionNotifier.new,
+);
+
 class AuthNotifier extends Notifier<AccountRole?> {
   @override
   AccountRole? build() => null;
 
+  /// Login lokal (dipakai tes/offline).
   void login(AccountRole role) => state = role;
 
   void logout() => state = null;
+
+  /// Login ke server. null = sukses, selain itu pesan error.
+  Future<String?> signIn(String email, String password) async {
+    try {
+      await api.login(email.trim(), password);
+      final user = SessionUser.fromJson(api.user ?? const {});
+      ref.read(sessionProvider.notifier).set(user);
+      state = user.role;
+      await _bootstrap(user.role);
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  /// Daftar akun. [venue] wajib untuk akun mitra.
+  Future<String?> signUp({
+    required String email,
+    required String password,
+    required String fullName,
+    required AccountRole role,
+    Map<String, dynamic>? venue,
+  }) async {
+    try {
+      await api.register(
+        email: email.trim(),
+        password: password,
+        fullName: fullName.trim(),
+        role: role == AccountRole.venue ? 'VENUE_ADMIN' : 'PLAYER',
+        venue: role == AccountRole.venue ? venue : null,
+      );
+      final user = SessionUser.fromJson(api.user ?? const {});
+      ref.read(sessionProvider.notifier).set(user);
+      state = user.role;
+      await _bootstrap(user.role);
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  Future<void> signOut() async {
+    await api.logout();
+    ref.read(sessionProvider.notifier).set(null);
+    state = null;
+  }
+
+  /// Muat data awal setelah login. Kegagalan satu bagian tidak membatalkan
+  /// login; layar tetap menampilkan data terakhir/seed.
+  Future<void> _bootstrap(AccountRole role) async {
+    final jobs = <Future<Object?>>[
+      ref.read(walletProvider.notifier).refresh(),
+      ref.read(bookingsProvider.notifier).refresh(),
+      ref.read(lobbiesProvider.notifier).refresh(),
+    ];
+    if (role == AccountRole.venue) {
+      jobs.add(ref.read(venueSlotsProvider.notifier).refresh());
+    } else {
+      jobs.add(ref.read(venuesProvider.notifier).refresh());
+    }
+    await Future.wait(jobs);
+  }
 }
 
 final authProvider = NotifierProvider<AuthNotifier, AccountRole?>(
   AuthNotifier.new,
 );
 
-/// Profil venue pemilik akun venue (seed).
-const venueProfile = (
+/// Pesan error yang aman ditampilkan ke pengguna.
+String apiMessage(Object error) =>
+    error is ApiException ? error.message : 'Tidak bisa menghubungi server.';
+
+int _asInt(dynamic value, [int fallback = 0]) {
+  if (value is num) return value.toInt();
+  // Postgres NUMERIC datang sebagai string desimal ("100000.00").
+  if (value is String) {
+    return num.tryParse(value)?.toInt() ?? fallback;
+  }
+  return fallback;
+}
+
+Map<String, dynamic> _asMap(dynamic value) =>
+    value is Map ? value.cast<String, dynamic>() : <String, dynamic>{};
+
+List<dynamic> _asList(dynamic value) => value is List ? value : const [];
+
+DateTime _asDate(dynamic value) {
+  if (value is String && value.isNotEmpty) {
+    return DateTime.tryParse(value)?.toLocal() ?? DateTime.now();
+  }
+  return DateTime.now();
+}
+
+String _apiDate(DateTime day) =>
+    '${day.year.toString().padLeft(4, '0')}-'
+    '${day.month.toString().padLeft(2, '0')}-'
+    '${day.day.toString().padLeft(2, '0')}';
+
+Sport sportFromApi(String? value) => switch (value?.toUpperCase()) {
+  'FUTSAL' => Sport.futsal,
+  'VOLLEY' => Sport.volley,
+  'MINISOCCER' => Sport.minisoccer,
+  _ => Sport.badminton,
+};
+
+String sportToApi(Sport sport) => switch (sport) {
+  Sport.badminton => 'BADMINTON',
+  Sport.futsal => 'FUTSAL',
+  Sport.volley => 'VOLLEY',
+  Sport.minisoccer => 'MINISOCCER',
+};
+
+LobbyStatus _lobbyStatusFromApi(String? value) => switch (value) {
+  'FILLED' => LobbyStatus.filled,
+  'CONFIRMED' => LobbyStatus.confirmed,
+  'EXPIRED' => LobbyStatus.expired,
+  'CANCELLED' => LobbyStatus.cancelled,
+  _ => LobbyStatus.open,
+};
+
+/// Profil venue pemilik akun venue. Nilai awal = seed, diganti dari
+/// `/venue/venues` setelah login supaya nama dan jumlah lapangan sesuai akun.
+var venueProfile = (
   name: 'GOR C-Tra Arena',
   city: 'Bandung',
   courts: 2,
@@ -159,6 +315,164 @@ const venues = <VenueInfo>[
 VenueInfo venueByName(String name) =>
     venues.firstWhere((v) => v.name == name, orElse: () => venues.first);
 
+/// ── Katalog venue dari API ──────────────────────────────────────────────
+
+class ApiCourt {
+  const ApiCourt({
+    required this.id,
+    required this.name,
+    required this.sport,
+    required this.pricePerHour,
+    required this.capacity,
+  });
+
+  final String id;
+  final String name;
+  final Sport sport;
+  final int pricePerHour;
+  final int capacity;
+
+  factory ApiCourt.fromJson(Map<String, dynamic> json) => ApiCourt(
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? 'Lapangan',
+    sport: sportFromApi(json['sport'] as String?),
+    pricePerHour: _asInt(json['pricePerHour']),
+    capacity: _asInt(json['capacity'], 12),
+  );
+}
+
+class ApiVenue {
+  const ApiVenue({
+    required this.id,
+    required this.name,
+    required this.city,
+    required this.courts,
+  });
+
+  final String id;
+  final String name;
+  final String city;
+  final List<ApiCourt> courts;
+
+  factory ApiVenue.fromJson(Map<String, dynamic> json) => ApiVenue(
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? 'Venue',
+    city: json['city'] as String? ?? '',
+    courts: [
+      for (final c in _asList(json['courts'])) ApiCourt.fromJson(_asMap(c)),
+    ],
+  );
+}
+
+class ApiSlot {
+  const ApiSlot({
+    required this.id,
+    required this.courtId,
+    required this.courtName,
+    required this.sport,
+    required this.start,
+    required this.end,
+    required this.price,
+    required this.status,
+    this.lobbyId,
+  });
+
+  final String id;
+  final String courtId;
+  final String courtName;
+  final Sport sport;
+  final DateTime start;
+  final DateTime end;
+  final int price;
+  final String status;
+  final String? lobbyId;
+
+  bool get isOpen => status == 'OPEN' && lobbyId == null;
+
+  factory ApiSlot.fromJson(Map<String, dynamic> json) => ApiSlot(
+    id: json['id'] as String? ?? '',
+    courtId: json['courtId'] as String? ?? '',
+    courtName: json['courtName'] as String? ?? 'Lapangan',
+    sport: sportFromApi(json['sport'] as String?),
+    start: _asDate(json['startAt']),
+    end: _asDate(json['endAt']),
+    price: _asInt(json['price']),
+    status: json['status'] as String? ?? 'OPEN',
+    lobbyId: json['lobbyId'] as String?,
+  );
+}
+
+Sport _seedSport(String venue) {
+  final name = venue.toLowerCase();
+  if (name.contains('futsal')) return Sport.futsal;
+  if (name.contains('voli')) return Sport.volley;
+  if (name.contains('soccer') || name.contains('sutos')) {
+    return Sport.minisoccer;
+  }
+  return Sport.badminton;
+}
+
+class VenuesNotifier extends Notifier<List<ApiVenue>> {
+  @override
+  List<ApiVenue> build() => _seedVenues();
+
+  /// Seed dipakai sampai `/venues` menjawab, supaya layar tidak kosong saat
+  /// offline. Id seed tidak bisa dipakai membuat lobby.
+  static List<ApiVenue> _seedVenues() => [
+    for (final v in venues)
+      ApiVenue(
+        id: 'seed-${v.name}',
+        name: v.name,
+        city: v.city,
+        courts: [
+          for (var c = 1; c <= v.courts; c++)
+            ApiCourt(
+              id: 'seed-${v.name}-$c',
+              name: 'Lapangan $c',
+              sport: _seedSport(v.name),
+              pricePerHour: v.weekdayRate,
+              capacity: 12,
+            ),
+        ],
+      ),
+  ];
+
+  Future<String?> refresh() async {
+    try {
+      final data = _asMap(await api.get('/venues'));
+      final items = [
+        for (final item in _asList(data['items']))
+          ApiVenue.fromJson(_asMap(item)),
+      ];
+      if (items.isNotEmpty) state = items;
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  /// Slot lapangan untuk tanggal tertentu. Kosong = belum ada/tidak bisa
+  /// dimuat; layar menampilkan pesan.
+  Future<List<ApiSlot>> slots(String venueId, DateTime day) async {
+    if (venueId.startsWith('seed-')) return const [];
+    try {
+      final data = _asMap(
+        await api.get('/venues/$venueId/slots', query: {'date': _apiDate(day)}),
+      );
+      return [
+        for (final item in _asList(data['items']))
+          ApiSlot.fromJson(_asMap(item)),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+}
+
+final venuesProvider = NotifierProvider<VenuesNotifier, List<ApiVenue>>(
+  VenuesNotifier.new,
+);
+
 /// ── Jadwal venue ─────────────────────────────────────────────────────────
 
 enum SlotStatus { open, booked, lobby, closed }
@@ -195,6 +509,8 @@ class VenueSlot {
     required this.price,
     this.status = SlotStatus.open,
     this.guest,
+    this.courtId,
+    this.courtName,
   });
 
   final String id;
@@ -203,6 +519,8 @@ class VenueSlot {
   final DateTime end;
   final int price;
   final SlotStatus status;
+  final String? courtId;
+  final String? courtName;
 
   /// Nama room atau pemesan saat slot terisi.
   final String? guest;
@@ -222,6 +540,8 @@ class VenueSlot {
         price: price ?? this.price,
         status: status ?? this.status,
         guest: guest ?? this.guest,
+        courtId: courtId,
+        courtName: courtName,
       );
 }
 
@@ -367,6 +687,204 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
 
   void setPrice(String id, int price) {
     state = [for (final s in state) s.id == id ? s.copyWith(price: price) : s];
+  }
+
+  // ── Sisi server (akun venue) ───────────────────────────────────────────
+
+  // Satu akun venue bisa punya beberapa venue (venues.owner_id di DB).
+  List<ApiVenue> _venues = const [];
+  String? _venueId;
+  List<VenueSlot> _raw = const [];
+
+  List<ApiVenue> get venues => _venues;
+
+  ApiVenue? get venue {
+    for (final v in _venues) {
+      if (v.id == _venueId) return v;
+    }
+    return _venues.isEmpty ? null : _venues.first;
+  }
+
+  List<ApiCourt> get courts => venue?.courts ?? const [];
+
+  String? get venueId => _venueId;
+
+  /// Pindah venue tanpa request ulang: slot semua venue sudah di [_raw].
+  void selectVenue(String id) {
+    if (id == _venueId) return;
+    _venueId = id;
+    _applyProfile();
+    _applySlots();
+  }
+
+  void _applyProfile() {
+    final v = venue;
+    if (v == null) return;
+    venueProfile = (
+      name: v.name,
+      city: v.city,
+      courts: v.courts.length,
+      rating: venueProfile.rating,
+      verified: venueProfile.verified,
+      payout: venueProfile.payout,
+      joinedAt: venueProfile.joinedAt,
+    );
+  }
+
+  void _applySlots() {
+    final ids = {for (final c in courts) c.id};
+    state = [
+      for (final s in _raw)
+        if (ids.contains(s.courtId)) s,
+    ];
+  }
+
+  int _courtNumber(String courtId) {
+    final index = courts.indexWhere((c) => c.id == courtId);
+    return index < 0 ? 0 : index + 1;
+  }
+
+  VenueSlot _fromApi(ApiSlot slot) {
+    final court = _courtNumber(slot.courtId);
+    final status = slot.status == 'BLOCKED'
+        ? SlotStatus.closed
+        : slot.lobbyId != null
+        ? SlotStatus.lobby
+        : slot.status == 'BOOKED'
+        ? SlotStatus.booked
+        : SlotStatus.open;
+    return VenueSlot(
+      id: slot.id,
+      court: court == 0 ? 1 : court,
+      start: slot.start,
+      end: slot.end,
+      price: slot.price,
+      status: status,
+      guest: slot.lobbyId == null ? null : 'Room aktif',
+      courtId: slot.courtId,
+      courtName: slot.courtName,
+    );
+  }
+
+  Future<String?> refresh() async {
+    try {
+      final data = _asMap(await api.get('/venue/venues'));
+      final mine = [
+        for (final item in _asList(data['items']))
+          ApiVenue.fromJson(_asMap(item)),
+      ];
+      _venues = mine;
+      final selected = _venueId;
+      _venueId = mine.any((v) => v.id == selected)
+          ? selected
+          : (mine.isEmpty ? null : mine.first.id);
+      _applyProfile();
+
+      final days = <DateTime>[
+        for (var i = 0; i < 7; i++) DateTime.now().add(Duration(days: i)),
+      ];
+      final pages = await Future.wait([
+        for (final day in days)
+          api.get('/venue/slots', query: {'date': _apiDate(day)}),
+      ]);
+      _raw = [
+        for (final page in pages)
+          for (final item in _asList(_asMap(page)['items']))
+            _fromApi(ApiSlot.fromJson(_asMap(item))),
+      ];
+      _applySlots();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  /// Buka slot dari tarif per jam lapangan: `price` = tarif × durasi.
+  Future<String?> addRemote({
+    required String courtId,
+    required DateTime start,
+    required Duration duration,
+    required int pricePerHour,
+  }) async {
+    try {
+      await api.post(
+        '/venue/slots',
+        body: {
+          'courtId': courtId,
+          'startAt': start.toUtc().toIso8601String(),
+          'endAt': start.add(duration).toUtc().toIso8601String(),
+          'price': pricePerHour * duration.inHours,
+        },
+      );
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  Future<String?> setStatusRemote(String id, SlotStatus status) async {
+    try {
+      await api.patch(
+        '/venue/slots/$id',
+        body: {'status': status == SlotStatus.closed ? 'BLOCKED' : 'OPEN'},
+      );
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  Future<String?> setPriceRemote(String id, int price) async {
+    try {
+      await api.patch('/venue/slots/$id', body: {'price': price});
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  /// Tarif per jam lapangan — sumber harga semua slot baru di lapangan itu.
+  /// Slot yang sudah ada menyimpan harganya sendiri.
+  Future<String?> setCourtPriceRemote(String courtId, int pricePerHour) async {
+    try {
+      await api.patch(
+        '/venue/courts/$courtId',
+        body: {'pricePerHour': pricePerHour},
+      );
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  Future<String?> addCourtRemote({
+    required String name,
+    required Sport sport,
+    required int pricePerHour,
+    required int capacity,
+  }) async {
+    final id = _venueId;
+    if (id == null) return 'Venue belum dimuat dari server.';
+    try {
+      await api.post(
+        '/venue/courts',
+        body: {
+          'venueId': id,
+          'name': name,
+          'sport': sportToApi(sport),
+          'pricePerHour': pricePerHour,
+          'capacity': capacity,
+        },
+      );
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
   }
 }
 
@@ -834,6 +1352,132 @@ class LobbiesNotifier extends Notifier<List<Lobby>> {
         .hold(lobby.pricePerPerson, 'Hold · ${lobby.title}');
     state = [lobby, ...state];
   }
+
+  // ── Sisi server ────────────────────────────────────────────────────────
+
+  Future<String?> refresh() async {
+    try {
+      final data = _asMap(await api.get('/lobbies'));
+      final items = [
+        for (final item in _asList(data['items'])) lobbyFromApi(_asMap(item)),
+      ];
+      state = items;
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  /// Ambil detail (nama peserta asli) lalu gabungkan ke daftar.
+  Future<String?> loadDetail(String id) async {
+    try {
+      final json = _asMap(await api.get('/lobbies/$id'));
+      final lobby = lobbyFromApi(
+        json,
+        members: [
+          for (final item in _asList(json['members']))
+            _memberFromApi(_asMap(item)),
+        ],
+      );
+      if (state.any((l) => l.id == id)) {
+        state = [for (final l in state) l.id == id ? lobby : l];
+      } else {
+        state = [...state, lobby]..sort((a, b) => a.start.compareTo(b.start));
+      }
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  Future<String?> joinRemote(String id) async {
+    try {
+      await api.post('/lobbies/$id/join');
+      await Future.wait([
+        loadDetail(id),
+        ref.read(walletProvider.notifier).refresh(),
+        ref.read(bookingsProvider.notifier).refresh(),
+      ]);
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  Future<String?> leaveRemote(String id) async {
+    try {
+      final lobby = byId(id);
+      if (lobby.isHost) {
+        await api.delete('/lobbies/$id');
+      } else {
+        await api.delete('/lobbies/$id/members/me');
+      }
+      await Future.wait([
+        refresh(),
+        ref.read(walletProvider.notifier).refresh(),
+        ref.read(bookingsProvider.notifier).refresh(),
+      ]);
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  Future<String?> createRemote({
+    required String slotId,
+    required String title,
+    required int quota,
+  }) async {
+    try {
+      await api.post(
+        '/lobbies',
+        body: {'slotId': slotId, 'title': title, 'quota': quota},
+      );
+      await Future.wait([
+        refresh(),
+        ref.read(walletProvider.notifier).refresh(),
+      ]);
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+}
+
+Member _memberFromApi(Map<String, dynamic> json) {
+  final role = json['role'] as String?;
+  final userId = json['userId'] as String?;
+  return Member(
+    name: json['fullName'] as String? ?? 'Pemain',
+    isHost: role == 'HOST',
+    isMe: userId != null && userId == api.userId,
+  );
+}
+
+Lobby lobbyFromApi(Map<String, dynamic> json, {List<Member>? members}) {
+  final joined = _asInt(json['joined']);
+  final sport = sportFromApi(_asMap(json['court'])['sport'] as String?);
+  final deadline = json['joinDeadline'];
+  final venue = _asMap(json['venue']);
+  final slot = _asMap(json['slot']);
+  return Lobby(
+    id: json['id'] as String? ?? '',
+    title: json['title'] as String? ?? 'Room',
+    sport: sport,
+    venue: venue['name'] as String? ?? 'Venue',
+    city: venue['city'] as String? ?? '',
+    court: _asMap(json['court'])['name'] as String? ?? 'Lapangan',
+    start: _asDate(slot['startAt']),
+    end: _asDate(slot['endAt']),
+    priceTotal: _asInt(json['priceTotal']),
+    quota: _asInt(json['quota'], 2),
+    deadline: deadline == null ? DateTime.now() : _asDate(deadline),
+    members:
+        members ??
+        [for (var i = 0; i < joined; i++) Member(name: 'Peserta ${i + 1}')],
+    status: _lobbyStatusFromApi(json['status'] as String?),
+    isHost: json['hostId'] == api.userId,
+  );
 }
 
 final lobbiesProvider = NotifierProvider<LobbiesNotifier, List<Lobby>>(
@@ -928,6 +1572,54 @@ class WalletNotifier extends Notifier<Wallet> {
       entries: [entry, ...state.entries],
     );
   }
+
+  // ── Sisi server ────────────────────────────────────────────────────────
+
+  Future<String?> refresh() async {
+    try {
+      final wallet = _asMap(await api.get('/me/wallet'));
+      final ledger = _asMap(await api.get('/me/wallet/ledger'));
+      state = Wallet(
+        balance: _asInt(wallet['balance']),
+        held: _asInt(wallet['held']),
+        entries: [
+          for (final item in _asList(ledger['items']))
+            _entryFromApi(_asMap(item)),
+        ],
+      );
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  Future<String?> topUpRemote(int amount) async {
+    try {
+      final key = 'app-${DateTime.now().microsecondsSinceEpoch}';
+      await api.topup(amount, key);
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+}
+
+WalletEntry _entryFromApi(Map<String, dynamic> json) {
+  final type = json['type'] as String? ?? 'MUTASI';
+  return WalletEntry(
+    type: type,
+    amount: _asInt(json['amount']),
+    label: switch (type) {
+      'TOPUP' => 'Top up saldo',
+      'CAPTURE' => 'Pembayaran booking',
+      'HOLD' => 'Dana dikunci',
+      'RELEASE' => 'Dana dilepas',
+      'PENALTY' => 'Denda',
+      _ => 'Mutasi',
+    },
+    at: _asDate(json['createdAt']),
+  );
 }
 
 final walletProvider = NotifierProvider<WalletNotifier, Wallet>(
@@ -977,6 +1669,42 @@ class BookingsNotifier extends Notifier<List<Booking>> {
       for (final b in state) b.id == id ? b.copyWith(checkedIn: true) : b,
     ];
   }
+
+  Future<String?> refresh() async {
+    try {
+      final data = _asMap(await api.get('/me/bookings'));
+      state = [
+        for (final item in _asList(data['items']))
+          _bookingFromApi(_asMap(item)),
+      ];
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+}
+
+Booking _bookingFromApi(Map<String, dynamic> json) {
+  final slot = _asMap(json['slot']);
+  final court = _asMap(json['court']);
+  final venue = _asMap(json['venue']);
+  final lobby = _asMap(json['lobby']);
+  final code = json['bookingCode'] as String? ?? '';
+  return Booking(
+    id: json['id'] as String? ?? '',
+    code: code,
+    title: lobby['title'] as String? ?? 'Booking',
+    venue: venue['name'] as String? ?? 'Venue',
+    court: court['name'] as String? ?? 'Lapangan',
+    city: venue['city'] as String? ?? '',
+    start: _asDate(slot['startAt']),
+    end: _asDate(slot['endAt']),
+    sport: sportFromApi(court['sport'] as String?),
+    amount: _asInt(json['amountPaid']),
+    // Backend v1 belum menerbitkan token QR; kode booking dipakai sebagai
+    // isi QR. Scan validasi tetap di sisi venue (v2).
+    token: code,
+  );
 }
 
 final bookingsProvider = NotifierProvider<BookingsNotifier, List<Booking>>(
