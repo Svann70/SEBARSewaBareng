@@ -42,7 +42,7 @@ class WalletScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           SportPanel(
-            gradient: C.pinkPanel,
+            gradient: C.primaryPanel,
             radius: 30,
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -127,13 +127,13 @@ class WalletScreen extends ConsumerWidget {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: C.tealSoft,
+                    color: C.primarySoft,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
                     Icons.verified_user_outlined,
                     size: 18,
-                    color: C.teal,
+                    color: C.primary,
                   ),
                 ),
                 const SizedBox(width: 11),
@@ -252,11 +252,11 @@ class _LedgerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, color, bg) = switch (entry.type) {
-      'TOPUP' => (Icons.add_circle_outline, C.green, C.tealSoft),
-      'CAPTURE' => (Icons.shopping_bag_outlined, C.purple, C.purpleSoft),
+      'TOPUP' => (Icons.add_circle_outline, C.primary, C.primarySoft),
+      'CAPTURE' => (Icons.shopping_bag_outlined, C.primary, C.primarySoft),
       'HOLD' => (Icons.lock_outline, C.amber, C.amberSoft),
       'RELEASE' => (Icons.lock_open_outlined, C.muted, C.surfaceAlt),
-      'PENALTY' => (Icons.gavel_outlined, C.coral, C.pinkSoft),
+      'PENALTY' => (Icons.gavel_outlined, C.danger, C.primarySoft),
       _ => (Icons.swap_horiz, C.muted, C.surfaceAlt),
     };
     final amount = switch (entry.type) {
@@ -316,7 +316,7 @@ class _LedgerRow extends StatelessWidget {
                   ? C.muted
                   : entry.amount < 0
                   ? C.ink
-                  : C.green,
+                  : C.primary,
             ),
           ),
         ],

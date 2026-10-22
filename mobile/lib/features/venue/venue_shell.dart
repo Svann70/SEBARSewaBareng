@@ -46,6 +46,7 @@ class _VenueShellState extends State<VenueShell> {
         index: _index,
         items: DockNav.venueDock,
         centerIcon: Icons.add,
+        centerLabel: 'Buka slot',
         onSelect: (i) => setState(() {
           _index = i;
           _visited.add(i);
@@ -87,13 +88,13 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: C.tealSoft,
+                color: C.primarySoft,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: const Icon(
                 Icons.storefront_outlined,
                 size: 20,
-                color: C.teal,
+                color: C.primary,
               ),
             ),
             const SizedBox(width: 11),
@@ -118,7 +119,7 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
                       ),
                       if (venueProfile.verified) ...[
                         const SizedBox(width: 5),
-                        const Icon(Icons.verified, size: 14, color: C.teal),
+                        const Icon(Icons.verified, size: 14, color: C.primary),
                       ],
                     ],
                   ),
@@ -129,12 +130,16 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
                 ],
               ),
             ),
-            const Pill('Venue', background: C.tealSoft, color: C.tealDeep),
+            const Pill(
+              'Venue',
+              background: C.primarySoft,
+              color: C.primaryDeep,
+            ),
           ],
         ),
         const SizedBox(height: 16),
         SportPanel(
-          gradient: C.tealPanel,
+          gradient: C.primaryPanel,
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,7 +184,7 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
                 icon: Icons.event_available,
                 label: 'Buka slot',
                 detail: '$open kosong hari ini',
-                tint: C.green,
+                tint: C.primary,
                 onTap: () => showAddSlotSheet(context),
               ),
             ),
@@ -189,7 +194,7 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
                 icon: Icons.payments_outlined,
                 label: 'Cairkan',
                 detail: rupiah(venueProfile.payout),
-                tint: C.teal,
+                tint: C.primary,
                 onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Pencairan H+1 setelah check-in.'),
@@ -220,9 +225,9 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
                 subtitle: '${courts[i].taken} dari ${courts[i].total} slot',
                 value: '${courts[i].percent}%',
                 background: switch (i % 4) {
-                  0 => C.pinkSoft,
+                  0 => C.primarySoft,
                   2 => C.amberSoft,
-                  3 => C.tealSoft,
+                  3 => C.primarySoft,
                   _ => C.surface,
                 },
                 avatars: courts[i].guests,
@@ -258,7 +263,7 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
                   color: C.mint,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.insights, size: 18, color: C.green),
+                child: const Icon(Icons.insights, size: 18, color: C.primary),
               ),
               const SizedBox(width: 11),
               Expanded(
@@ -591,7 +596,7 @@ class _VenueAccount extends ConsumerWidget {
           onTap: () => context.push('/venue/analytics'),
           child: Row(
             children: [
-              const Icon(Icons.insights, size: 17, color: C.green),
+              const Icon(Icons.insights, size: 17, color: C.primary),
               const SizedBox(width: 10),
               const Expanded(child: Text('Analytics venue', style: T.h3)),
               const Icon(Icons.chevron_right, size: 18, color: C.faint),
@@ -618,7 +623,7 @@ class _VenueAccount extends ConsumerWidget {
         SebarButton(
           label: 'Keluar ke akun pemain',
           icon: Icons.swap_horiz,
-          color: C.teal,
+          color: C.primary,
           onPressed: () {
             ref.read(authProvider.notifier).logout();
             context.go('/login');

@@ -11,27 +11,26 @@ int roundingSurplus(int priceTotal, int quota) =>
     pricePerPerson(priceTotal, quota) * quota - priceTotal;
 
 class Penalty {
-  const Penalty({
-    required this.refundPct,
-    required this.penaltyPct,
-    required this.scoreDelta,
-  });
+  const Penalty({required this.refundPct, required this.penaltyPct});
 
   final int refundPct;
   final int penaltyPct;
-  final int scoreDelta;
 }
 
-/// Kebijakan pembatalan §5.6. Perbandingan 6 jam dilakukan server;
+/// Kebijakan pembatalan. Perbandingan 6 jam dilakukan server;
 /// helper ini hanya untuk pratinjau di UI.
+///
+/// - batal ≥ 6 jam sebelum mulai: refund penuh,
+/// - batal < 6 jam: denda 15% (refund 85%),
+/// - tidak datang: hangus 100%.
 Penalty penaltyFor({required Duration untilStart, bool noShow = false}) {
   if (noShow) {
-    return const Penalty(refundPct: 0, penaltyPct: 100, scoreDelta: -25);
+    return const Penalty(refundPct: 0, penaltyPct: 100);
   }
   if (untilStart >= const Duration(hours: 6)) {
-    return const Penalty(refundPct: 100, penaltyPct: 0, scoreDelta: 0);
+    return const Penalty(refundPct: 100, penaltyPct: 0);
   }
-  return const Penalty(refundPct: 50, penaltyPct: 50, scoreDelta: -10);
+  return const Penalty(refundPct: 85, penaltyPct: 15);
 }
 
 String rupiah(num value) {

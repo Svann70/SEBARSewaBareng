@@ -102,8 +102,8 @@ class _TicketCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Pill(
                   booking.checkedIn ? 'Sudah masuk' : 'Siap discan',
-                  color: booking.checkedIn ? C.green : C.amber,
-                  background: booking.checkedIn ? C.tealSoft : C.amberSoft,
+                  color: booking.checkedIn ? C.primary : C.amber,
+                  background: booking.checkedIn ? C.primarySoft : C.amberSoft,
                 ),
               ],
             ),

@@ -21,14 +21,9 @@ extension SportX on Sport {
     Sport.minisoccer => Icons.sports_football,
   };
 
-  /// Warna panel per cabang. Semua varian pekat supaya teks putih
-  /// di atasnya lolos kontras WCAG untuk teks kecil.
-  List<Color> get gradient => switch (this) {
-    Sport.badminton => C.pinkPanel,
-    Sport.futsal => C.tealPanel,
-    Sport.volley => C.purplePanel,
-    Sport.minisoccer => C.amberPanel,
-  };
+  /// Header hero memakai satu warna brand saja supaya layar tidak ramai;
+  /// cabang olahraga dibedakan lewat ikon dan label, bukan warna.
+  List<Color> get gradient => C.primaryPanel;
 }
 
 /// Dua akun dalam satu aplikasi: pemain dan venue.
@@ -54,6 +49,16 @@ extension AccountRoleX on AccountRole {
     AccountRole.player => '/home',
     AccountRole.venue => '/venue',
   };
+}
+
+/// Satu form login untuk pemain dan venue: peran ditentukan dari akun.
+/// ponytail: selama belum ada API, domain email dijadikan penentu
+/// (`@venue.sebar.app` = akun mitra); ganti ke peran dari server saat ada.
+AccountRole roleForEmail(String email) {
+  final value = email.trim().toLowerCase();
+  return value.startsWith('admin') || value.endsWith('@venue.sebar.app')
+      ? AccountRole.venue
+      : AccountRole.player;
 }
 
 class AuthNotifier extends Notifier<AccountRole?> {
@@ -167,10 +172,10 @@ extension SlotStatusX on SlotStatus {
   };
 
   Color get color => switch (this) {
-    SlotStatus.open => C.green,
+    SlotStatus.open => C.primary,
     SlotStatus.booked => C.muted,
     SlotStatus.lobby => C.amber,
-    SlotStatus.closed => C.coral,
+    SlotStatus.closed => C.danger,
   };
 
   IconData get icon => switch (this) {
@@ -404,15 +409,9 @@ extension LobbyAccessX on LobbyAccess {
 }
 
 class Member {
-  const Member({
-    required this.name,
-    required this.score,
-    this.isMe = false,
-    this.isHost = false,
-  });
+  const Member({required this.name, this.isMe = false, this.isHost = false});
 
   final String name;
-  final int score;
   final bool isMe;
   final bool isHost;
 }
@@ -431,7 +430,6 @@ class Lobby {
     required this.end,
     required this.priceTotal,
     required this.quota,
-    required this.minReliability,
     required this.deadline,
     required this.members,
     this.status = LobbyStatus.open,
@@ -450,7 +448,6 @@ class Lobby {
   final DateTime end;
   final int priceTotal;
   final int quota;
-  final int minReliability;
   final DateTime deadline;
   final List<Member> members;
   final LobbyStatus status;
@@ -478,7 +475,6 @@ class Lobby {
     end: end,
     priceTotal: priceTotal,
     quota: quota,
-    minReliability: minReliability,
     deadline: deadline,
     members: members ?? this.members,
     status: status ?? this.status,
@@ -491,7 +487,7 @@ class Lobby {
 /// Cermin `price_per_person` generated column; dipakai agar nama tetap terbaca.
 int pricePerPersonOf(int total, int quota) => pricePerPerson(total, quota);
 
-const me = Member(name: 'Raka', score: 92, isMe: true);
+const me = Member(name: 'Raka', isMe: true);
 
 class WalletEntry {
   const WalletEntry({
@@ -602,14 +598,13 @@ final _seedLobbies = <Lobby>[
     end: _at(2, 10),
     priceTotal: 400000,
     quota: 8,
-    minReliability: 70,
     deadline: _at(2, 2),
     members: const [
-      Member(name: 'Dimas', score: 96, isHost: true),
-      Member(name: 'Ayu', score: 88),
-      Member(name: 'Bagas', score: 74),
-      Member(name: 'Nadia', score: 91),
-      Member(name: 'Fajar', score: 79),
+      Member(name: 'Dimas', isHost: true),
+      Member(name: 'Ayu'),
+      Member(name: 'Bagas'),
+      Member(name: 'Nadia'),
+      Member(name: 'Fajar'),
     ],
   ),
   Lobby(
@@ -623,20 +618,19 @@ final _seedLobbies = <Lobby>[
     end: _at(1, 22),
     priceTotal: 300000,
     quota: 10,
-    minReliability: 0,
     deadline: _at(1, 14),
     access: LobbyAccess.password,
     secret: 'futsal123',
     members: const [
-      Member(name: 'Rian', score: 82, isHost: true),
-      Member(name: 'Yoga', score: 90),
-      Member(name: 'Tio', score: 68),
-      Member(name: 'Sasa', score: 95),
-      Member(name: 'Bima', score: 77),
-      Member(name: 'Kiki', score: 85),
-      Member(name: 'Lala', score: 73),
-      Member(name: 'Rafi', score: 88),
-      Member(name: 'Wulan', score: 91),
+      Member(name: 'Rian', isHost: true),
+      Member(name: 'Yoga'),
+      Member(name: 'Tio'),
+      Member(name: 'Sasa'),
+      Member(name: 'Bima'),
+      Member(name: 'Kiki'),
+      Member(name: 'Lala'),
+      Member(name: 'Rafi'),
+      Member(name: 'Wulan'),
     ],
   ),
   Lobby(
@@ -650,15 +644,14 @@ final _seedLobbies = <Lobby>[
     end: _at(3, 18),
     priceTotal: 250000,
     quota: 6,
-    minReliability: 60,
     deadline: _at(3, 10),
     access: LobbyAccess.link,
     secret: 'VOLI-SORE',
     members: const [
-      Member(name: 'Sinta', score: 87, isHost: true),
-      Member(name: 'Adi', score: 71),
-      Member(name: 'Mira', score: 93),
-      Member(name: 'Doni', score: 64),
+      Member(name: 'Sinta', isHost: true),
+      Member(name: 'Adi'),
+      Member(name: 'Mira'),
+      Member(name: 'Doni'),
     ],
   ),
   Lobby(
@@ -672,27 +665,76 @@ final _seedLobbies = <Lobby>[
     end: _at(4, 8),
     priceTotal: 600000,
     quota: 12,
-    minReliability: 80,
     deadline: _at(4, 0),
     members: const [
-      Member(name: 'Hendra', score: 97, isHost: true),
-      Member(name: 'Gilang', score: 84),
-      Member(name: 'Putra', score: 89),
-      Member(name: 'Aris', score: 92),
-      Member(name: 'Bayu', score: 81),
-      Member(name: 'Ilham', score: 86),
+      Member(name: 'Hendra', isHost: true),
+      Member(name: 'Gilang'),
+      Member(name: 'Putra'),
+      Member(name: 'Aris'),
+      Member(name: 'Bayu'),
+      Member(name: 'Ilham'),
     ],
   ),
 ];
 
+/// Room tambahan (seed) supaya daftar penuh terasa nyata: lebih dari 20 room,
+/// jadi halaman "Semua room" punya alasan untuk ada.
+const _extraTitles = [
+  'Badminton Sore Ceria',
+  'Futsal Malam Seru',
+  'Voli Santai Akhir Pekan',
+  'Mini Soccer Jumat Malam',
+  'Badminton Ganda Campuran',
+  'Futsal Pagi Sebelum Kerja',
+  'Voli Putri Komunitas',
+  'Mini Soccer Turnamen Kecil',
+];
+
+const _extraNames = [
+  'Aldi',
+  'Nia',
+  'Reno',
+  'Maya',
+  'Fikri',
+  'Intan',
+  'Dewa',
+  'Sari',
+];
+
+final _extraLobbies = <Lobby>[
+  for (var i = 0; i < 22; i++)
+    Lobby(
+      id: 'lbx$i',
+      title: _extraTitles[i % _extraTitles.length],
+      sport: Sport.values[i % Sport.values.length],
+      venue: venues[i % venues.length].name,
+      city: venues[i % venues.length].city,
+      court: 'Lapangan ${1 + i % 3}',
+      start: _at(2 + i % 7, 8 + i % 10),
+      end: _at(2 + i % 7, 10 + i % 10),
+      priceTotal: venues[i % venues.length].rateOn(_at(2 + i % 7, 8)),
+      quota: 6 + i % 8,
+      deadline: _at(2 + i % 7, 2),
+      members: [
+        Member(name: _extraNames[i % _extraNames.length], isHost: true),
+        Member(name: _extraNames[(i + 3) % _extraNames.length]),
+        Member(name: _extraNames[(i + 5) % _extraNames.length]),
+      ],
+    ),
+];
+
 class LobbiesNotifier extends Notifier<List<Lobby>> {
   @override
-  List<Lobby> build() => _seedLobbies;
+  List<Lobby> build() => [..._seedLobbies, ..._extraLobbies];
 
   Lobby byId(String id) => state.firstWhere((l) => l.id == id);
 
   /// Hasil join: null = sukses, selain itu pesan error untuk UI.
-  String? join(String id, {String? secret}) {
+  ///
+  /// [useWallet] false = bayar lewat QRIS/transfer, jadi saldo dompet tidak
+  /// disentuh. ponytail: pembayaran eksternal belum diverifikasi server;
+  /// sambungkan ke webhook pembayaran saat gateway tersedia.
+  String? join(String id, {String? secret, bool useWallet = true}) {
     final lobby = byId(id);
     if (lobby.isFull) return 'Room sudah penuh.';
     if (lobby.joinedByMe) return 'Kamu sudah tergabung di room ini.';
@@ -704,17 +746,16 @@ class LobbiesNotifier extends Notifier<List<Lobby>> {
         (secret ?? '').trim().toUpperCase() != lobby.secret) {
       return 'Kode undangan tidak cocok.';
     }
-    if (me.score < lobby.minReliability) {
-      return 'Skor kamu ${me.score} di bawah minimum ${lobby.minReliability}.';
-    }
-    final wallet = ref.read(walletProvider);
-    if (wallet.available < lobby.pricePerPerson) {
-      return 'Saldo tersedia tidak cukup untuk join lobby ini.';
-    }
+    if (useWallet) {
+      final wallet = ref.read(walletProvider);
+      if (wallet.available < lobby.pricePerPerson) {
+        return 'Saldo tersedia tidak cukup untuk join lobby ini.';
+      }
 
-    ref
-        .read(walletProvider.notifier)
-        .hold(lobby.pricePerPerson, 'Hold · ${lobby.title}');
+      ref
+          .read(walletProvider.notifier)
+          .hold(lobby.pricePerPerson, 'Hold · ${lobby.title}');
+    }
 
     final updated = [...lobby.members, me];
     final full = updated.length >= lobby.quota;
@@ -768,7 +809,6 @@ class LobbiesNotifier extends Notifier<List<Lobby>> {
     required DateTime start,
     required int priceTotal,
     required int quota,
-    required int minReliability,
     LobbyAccess access = LobbyAccess.open,
     String? secret,
   }) {
@@ -783,7 +823,6 @@ class LobbiesNotifier extends Notifier<List<Lobby>> {
       end: start.add(const Duration(hours: 2)),
       priceTotal: priceTotal,
       quota: quota,
-      minReliability: minReliability,
       deadline: start.subtract(const Duration(hours: 6)),
       members: [me],
       isHost: true,
@@ -946,16 +985,10 @@ final bookingsProvider = NotifierProvider<BookingsNotifier, List<Booking>>(
 
 /// Filter pencarian di Home.
 class Filter {
-  const Filter({
-    this.sport,
-    this.city = 'Semua kota',
-    this.minScore = 0,
-    this.query = '',
-  });
+  const Filter({this.sport, this.city = 'Semua kota', this.query = ''});
 
   final Sport? sport;
   final String city;
-  final int minScore;
   final String query;
 }
 
@@ -963,33 +996,14 @@ class FilterNotifier extends Notifier<Filter> {
   @override
   Filter build() => const Filter();
 
-  void setSport(Sport? sport) => state = Filter(
-    sport: sport,
-    city: state.city,
-    minScore: state.minScore,
-    query: state.query,
-  );
+  void setSport(Sport? sport) =>
+      state = Filter(sport: sport, city: state.city, query: state.query);
 
-  void setCity(String city) => state = Filter(
-    sport: state.sport,
-    city: city,
-    minScore: state.minScore,
-    query: state.query,
-  );
+  void setCity(String city) =>
+      state = Filter(sport: state.sport, city: city, query: state.query);
 
-  void setMinScore(int score) => state = Filter(
-    sport: state.sport,
-    city: state.city,
-    minScore: score,
-    query: state.query,
-  );
-
-  void setQuery(String query) => state = Filter(
-    sport: state.sport,
-    city: state.city,
-    minScore: state.minScore,
-    query: query,
-  );
+  void setQuery(String query) =>
+      state = Filter(sport: state.sport, city: state.city, query: query);
 }
 
 final filterProvider = NotifierProvider<FilterNotifier, Filter>(
@@ -1004,7 +1018,6 @@ final filteredLobbiesProvider = Provider<List<Lobby>>((ref) {
     if (l.access == LobbyAccess.link) return false;
     if (f.sport != null && l.sport != f.sport) return false;
     if (f.city != 'Semua kota' && l.city != f.city) return false;
-    if (l.minReliability > f.minScore && f.minScore > 0) return false;
     if (needle.isNotEmpty) {
       final haystack =
           '${l.title} ${l.venue} ${l.city} ${l.court} ${l.sport.label}'
