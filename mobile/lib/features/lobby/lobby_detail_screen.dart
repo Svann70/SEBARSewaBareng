@@ -46,8 +46,8 @@ class LobbyDetailScreen extends ConsumerWidget {
                 Text(
                   '${lobby.sport.label} di ${lobby.court}, ${lobby.venue}. '
                   'Biaya lapangan ${rupiah(lobby.priceTotal)} dibagi '
-                  '${lobby.quota} orang. Skor minimum ${lobby.minReliability}, '
-                  'slot dikunci ${formatCountdown(lobby.untilStart)} lagi.',
+                  '${lobby.quota} orang. Slot dikunci '
+                  '${formatCountdown(lobby.untilStart)} lagi.',
                   style: T.body,
                 ),
                 const SizedBox(height: 20),
@@ -59,7 +59,7 @@ class LobbyDetailScreen extends ConsumerWidget {
                     const Icon(
                       Icons.location_on_outlined,
                       size: 15,
-                      color: C.pink,
+                      color: C.primary,
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -83,11 +83,11 @@ class LobbyDetailScreen extends ConsumerWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: C.pink,
+                          color: C.primary,
                         ),
                       ),
                       SizedBox(width: 4),
-                      Icon(Icons.north_east, size: 12, color: C.pink),
+                      Icon(Icons.north_east, size: 12, color: C.primary),
                     ],
                   ),
                 ),
@@ -130,89 +130,135 @@ class LobbyDetailScreen extends ConsumerWidget {
     final enough = wallet.available >= lobby.pricePerPerson;
     final agreed = ValueNotifier<bool>(false);
     final secret = TextEditingController();
+    var useWallet = enough;
 
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       builder: (_) => ValueListenableBuilder<bool>(
         valueListenable: agreed,
-        builder: (context, value, _) => SheetWrap(
-          title: 'Konfirmasi join',
-          children: [
-            Text(lobby.title, style: T.small),
-            const SizedBox(height: 12),
-            if (lobby.access == LobbyAccess.password) ...[
-              LabeledField(
-                label: 'Sandi room',
-                controller: secret,
-                hint: 'Tanya host',
-                obscure: true,
-                prefixIcon: Icons.lock_outline,
-              ),
+        builder: (context, value, _) => StatefulBuilder(
+          builder: (context, setSheet) => SheetWrap(
+            title: 'Konfirmasi join',
+            children: [
+              Text(lobby.title, style: T.small),
               const SizedBox(height: 12),
-            ],
-            _BillRow('Harga lapangan', rupiah(lobby.priceTotal)),
-            _BillRow(
-              'Dibagi ${lobby.quota} orang',
-              rupiah(lobby.pricePerPerson),
-            ),
-            if (roundingSurplus(lobby.priceTotal, lobby.quota) > 0)
+              if (lobby.access == LobbyAccess.password) ...[
+                LabeledField(
+                  label: 'Sandi room',
+                  controller: secret,
+                  hint: 'Tanya host',
+                  obscure: true,
+                  prefixIcon: Icons.lock_outline,
+                ),
+                const SizedBox(height: 12),
+              ],
+              _BillRow('Harga lapangan', rupiah(lobby.priceTotal)),
               _BillRow(
-                'Surplus pembulatan ke venue',
-                rupiah(roundingSurplus(lobby.priceTotal, lobby.quota)),
-                muted: true,
+                'Dibagi ${lobby.quota} orang',
+                rupiah(lobby.pricePerPerson),
               ),
-            const Divider(height: 22),
-            _BillRow('Saldo tersedia', rupiah(wallet.available), muted: true),
-            const SizedBox(height: 14),
-            const _PenaltyMini(),
-            const SizedBox(height: 12),
-            InkWell(
-              onTap: () => agreed.value = !value,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: Checkbox(
-                      value: value,
-                      onChanged: (v) => agreed.value = v ?? false,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'Saya paham dana dikunci saat join dan aturan '
-                      'pembatalan di atas berlaku.',
-                      style: T.small,
-                    ),
-                  ),
-                ],
+              if (roundingSurplus(lobby.priceTotal, lobby.quota) > 0)
+                _BillRow(
+                  'Surplus pembulatan ke venue',
+                  rupiah(roundingSurplus(lobby.priceTotal, lobby.quota)),
+                  muted: true,
+                ),
+              const Divider(height: 22),
+              const Text('Metode pembayaran', style: T.label),
+              const SizedBox(height: 8),
+              _PayOption(
+                selected: useWallet,
+                icon: Icons.account_balance_wallet_outlined,
+                title: 'Saldo dompet',
+                detail: enough
+                    ? '${rupiah(wallet.available)} tersedia'
+                    : 'Saldo ${rupiah(wallet.available)} — tidak cukup',
+                onTap: enough ? () => setSheet(() => useWallet = true) : null,
               ),
-            ),
-            const SizedBox(height: 14),
-            SebarButton(
-              label: enough
-                  ? 'Join · ${rupiah(lobby.pricePerPerson)}'
-                  : 'Saldo kurang · Top up',
-              onPressed: value
-                  ? () => Navigator.pop(context, enough ? true : null)
-                  : null,
-            ),
-          ],
+              const SizedBox(height: 8),
+              _PayOption(
+                selected: !useWallet,
+                icon: Icons.qr_code_2,
+                title: 'QRIS / transfer bank',
+                detail: 'Bayar dari luar dompet: QRIS, BCA, Mandiri',
+                onTap: () => setSheet(() => useWallet = false),
+              ),
+              if (!useWallet) ...[
+                const SizedBox(height: 10),
+                SurfaceCard(
+                  radius: 16,
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.schedule_outlined,
+                        size: 16,
+                        color: C.amber,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Instruksi pembayaran muncul setelah konfirmasi. Slot '
+                          'aman sampai pembayaran terverifikasi (maks 15 menit).',
+                          style: T.small,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              const _PenaltyMini(),
+              const SizedBox(height: 12),
+              InkWell(
+                onTap: () => agreed.value = !value,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Checkbox(
+                        value: value,
+                        onChanged: (v) => agreed.value = v ?? false,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Saya paham dana dikunci saat join dan aturan '
+                        'pembatalan di atas berlaku.',
+                        style: T.small,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              SebarButton(
+                label: useWallet
+                    ? 'Join · ${rupiah(lobby.pricePerPerson)}'
+                    : 'Bayar sekarang · ${rupiah(lobby.pricePerPerson)}',
+                onPressed: value && (enough || !useWallet)
+                    ? () => Navigator.pop(context, true)
+                    : null,
+              ),
+            ],
+          ),
         ),
       ),
     );
 
-    if (confirmed != true || !enough) {
+    if (confirmed != true || (useWallet && !enough)) {
       secret.dispose();
       return;
     }
 
     final error = ref
         .read(lobbiesProvider.notifier)
-        .join(lobby.id, secret: secret.text);
+        .join(lobby.id, secret: secret.text, useWallet: useWallet);
     secret.dispose();
     if (!context.mounted) return;
     if (error != null) {
@@ -229,7 +275,10 @@ class LobbyDetailScreen extends ConsumerWidget {
         content: Text(
           updated.isFull
               ? 'Kuota penuh. Booking dibuat, tiket QR sudah terbit.'
-              : '${rupiah(lobby.pricePerPerson)} dikunci. '
+              : useWallet
+              ? '${rupiah(lobby.pricePerPerson)} dikunci. '
+                    'Sisa ${updated.remaining} slot.'
+              : 'Instruksi QRIS/transfer dikirim. '
                     'Sisa ${updated.remaining} slot.',
         ),
       ),
@@ -251,10 +300,9 @@ class LobbyDetailScreen extends ConsumerWidget {
         content: Text(
           p.penaltyPct == 0
               ? 'Jadwal masih lebih dari 6 jam. Dana '
-                    '${rupiah(lobby.pricePerPerson)} dilepas penuh dan skor '
-                    'tidak berubah.'
-              : 'Kurang dari 6 jam ke mulai. ${rupiah(penaltyAmount)} menjadi '
-                    'denda dan skor turun ${p.scoreDelta.abs()} poin.',
+                    '${rupiah(lobby.pricePerPerson)} kembali penuh ke dompetmu.'
+              : 'Kurang dari 6 jam ke mulai. Denda 15% '
+                    '(${rupiah(penaltyAmount)}) tidak dikembalikan.',
           style: T.body,
         ),
         actions: [
@@ -264,7 +312,10 @@ class LobbyDetailScreen extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Ya, batalkan', style: TextStyle(color: C.coral)),
+            child: const Text(
+              'Ya, batalkan',
+              style: TextStyle(color: C.danger),
+            ),
           ),
         ],
       ),
@@ -298,6 +349,29 @@ class _Hero extends StatelessWidget {
           ),
           child: Stack(
             children: [
+              Positioned.fill(
+                child: CourtPhoto(
+                  venue: lobby.venue,
+                  court: lobby.court,
+                  height: 246,
+                  radius: 0,
+                  scrim: true,
+                ),
+              ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        C.primaryDeep.withValues(alpha: 0.4),
+                        C.primaryDeep.withValues(alpha: 0.78),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
               Positioned.fill(
                 child: IgnorePointer(
                   child: CustomPaint(painter: _HeroPainter()),
@@ -371,7 +445,7 @@ class _Hero extends StatelessWidget {
                       joined: lobby.joined,
                       quota: lobby.quota,
                       size: 58,
-                      color: lobby.isFull ? C.amber : C.teal,
+                      color: lobby.isFull ? C.amber : C.primary,
                       foreground: C.ink,
                       track: C.line,
                     ),
@@ -502,7 +576,7 @@ class _SummaryCard extends StatelessWidget {
               minHeight: 5,
               backgroundColor: C.surfaceAlt,
               valueColor: AlwaysStoppedAnimation(
-                lobby.isFull ? C.orange : C.green,
+                lobby.isFull ? C.orange : C.primary,
               ),
             ),
           ),
@@ -511,7 +585,10 @@ class _SummaryCard extends StatelessWidget {
             children: [
               Text('${lobby.remaining} slot tersisa', style: T.caption),
               const Spacer(),
-              Text('Skor min ${lobby.minReliability}', style: T.caption),
+              Text(
+                '${lobby.city} · ${rupiah(lobby.priceTotal)}',
+                style: T.caption,
+              ),
             ],
           ),
         ],
@@ -614,7 +691,7 @@ class _PrivateCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
-                  color: C.pink,
+                  color: C.primary,
                 ),
               ),
             ),
@@ -658,26 +735,19 @@ class _JoinBar extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(joined ? 'Kamu ikut' : 'Skor kamu', style: T.caption),
-                  Row(
-                    children: [
-                      Text(
-                        '${me.score}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.6,
-                          height: 1,
-                          color: C.ink,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(
-                        Icons.shield_outlined,
-                        size: 13,
-                        color: C.green,
-                      ),
-                    ],
+                  Text(
+                    joined ? 'Kamu ikut' : 'Harga per orang',
+                    style: T.caption,
+                  ),
+                  Text(
+                    rupiah(lobby.pricePerPerson),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.6,
+                      height: 1,
+                      color: C.ink,
+                    ),
                   ),
                 ],
               ),
@@ -687,7 +757,7 @@ class _JoinBar extends StatelessWidget {
                     ? GhostButton(
                         label: 'Batalkan join',
                         icon: Icons.logout,
-                        color: C.coral,
+                        color: C.danger,
                         height: 50,
                         onPressed: onCancel,
                       )
@@ -720,10 +790,10 @@ class _MemberRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: member.isMe ? C.tealSoft : C.surface,
+        color: member.isMe ? C.primarySoft : C.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: member.isMe ? C.teal.withValues(alpha: 0.35) : C.line,
+          color: member.isMe ? C.primary.withValues(alpha: 0.35) : C.line,
         ),
       ),
       child: Row(
@@ -741,7 +811,7 @@ class _MemberRow extends StatelessWidget {
               style: const TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 13,
-                color: C.tealDeep,
+                color: C.primaryDeep,
               ),
             ),
           ),
@@ -785,14 +855,14 @@ class _MemberRow extends StatelessWidget {
               ],
             ),
           ),
-          ScoreBadge(member.score, compact: true),
+          const SizedBox(width: 10),
         ],
       ),
     );
   }
 }
 
-/// Tiga zona pembatalan — transparan sebelum join (BR-4.3).
+/// Aturan pembatalan — dua zona waktu, denda 15% di bawah 6 jam.
 class _PenaltyRules extends StatelessWidget {
   const _PenaltyRules({required this.lobby});
 
@@ -818,19 +888,19 @@ class _PenaltyRules extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           const _RuleLine(
-            color: C.green,
+            color: C.primary,
             title: 'Batal ≥ 6 jam',
-            detail: 'Refund 100%, skor tetap',
+            detail: 'Refund penuh',
           ),
           const _RuleLine(
             color: C.amber,
             title: 'Batal < 6 jam',
-            detail: 'Refund 50%, skor −10',
+            detail: 'Denda 15%, refund 85%',
           ),
           const _RuleLine(
-            color: C.coral,
+            color: C.danger,
             title: 'Tidak datang',
-            detail: 'Hangus 100%, skor −25',
+            detail: 'Dana hangus',
           ),
         ],
       ),
@@ -908,18 +978,87 @@ class _PenaltyMini extends StatelessWidget {
             ),
           ),
           SizedBox(height: 8),
-          _RuleLine(color: C.green, title: '≥ 6 jam', detail: 'Refund penuh'),
-          _RuleLine(
-            color: C.amber,
-            title: '< 6 jam',
-            detail: 'Denda 50% + skor −10',
-          ),
-          _RuleLine(
-            color: C.coral,
-            title: 'No-show',
-            detail: 'Hangus 100% + skor −25',
-          ),
+          _RuleLine(color: C.primary, title: '≥ 6 jam', detail: 'Refund penuh'),
+          _RuleLine(color: C.amber, title: '< 6 jam', detail: 'Denda 15%'),
+          _RuleLine(color: C.danger, title: 'No-show', detail: 'Dana hangus'),
         ],
+      ),
+    );
+  }
+}
+
+/// Pilihan metode pembayaran pada lembar konfirmasi join.
+class _PayOption extends StatelessWidget {
+  const _PayOption({
+    required this.selected,
+    required this.icon,
+    required this.title,
+    required this.detail,
+    this.onTap,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String title;
+  final String detail;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onTap == null;
+    return Material(
+      color: selected ? C.primarySoft : C.surface,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? C.primary : C.line,
+              width: selected ? 1.6 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: disabled ? C.faint : C.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: disabled ? C.muted : C.ink,
+                      ),
+                    ),
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: T.caption,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                size: 20,
+                color: selected ? C.primary : C.faint,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

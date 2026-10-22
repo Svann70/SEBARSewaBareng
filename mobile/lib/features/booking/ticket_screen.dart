@@ -27,8 +27,8 @@ class TicketScreen extends ConsumerWidget {
             Center(
               child: Pill(
                 booking.checkedIn ? 'Sudah check-in' : 'Siap discan',
-                color: booking.checkedIn ? C.green : C.amber,
-                background: booking.checkedIn ? C.tealSoft : C.amberSoft,
+                color: booking.checkedIn ? C.primary : C.amber,
+                background: booking.checkedIn ? C.primarySoft : C.amberSoft,
                 icon: Icons.qr_code_scanner,
               ),
             ),
@@ -125,7 +125,7 @@ class TicketScreen extends ConsumerWidget {
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.shield_outlined, size: 18, color: C.teal),
+                      Icon(Icons.shield_outlined, size: 18, color: C.primary),
                       SizedBox(width: 7),
                       Expanded(child: Text('Token sekali pakai', style: T.h3)),
                     ],
@@ -160,7 +160,7 @@ class TicketScreen extends ConsumerWidget {
                               : 'Simulasi scan',
                           icon: Icons.qr_code_scanner,
                           height: 44,
-                          color: C.green,
+                          color: C.primary,
                           onPressed: booking.checkedIn
                               ? null
                               : () {
@@ -170,7 +170,7 @@ class TicketScreen extends ConsumerWidget {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text(
-                                        'Check-in valid. Skor +2 (92 → 94).',
+                                        'Check-in valid. Selamat bermain!',
                                       ),
                                     ),
                                   );

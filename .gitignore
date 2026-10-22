@@ -4,6 +4,8 @@
 /docs
 /.opencode
 styleref.pdf
+/revisi
+revisi.md
 
 # --- Secrets (never commit) ---
 .env*

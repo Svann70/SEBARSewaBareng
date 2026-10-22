@@ -88,14 +88,14 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
               ),
               _VLine(),
               Expanded(
-                child: _Stat(value: '$open', label: 'Kosong', color: C.green),
+                child: _Stat(value: '$open', label: 'Kosong', color: C.primary),
               ),
               _VLine(),
               Expanded(
                 child: _Stat(
                   value: rupiah(estimate),
                   label: 'Potensi',
-                  color: C.purple,
+                  color: C.primary,
                 ),
               ),
             ],
@@ -183,6 +183,68 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
     ];
   }
 
+  /// Venue memilih atau mengganti foto lapangan. Kuncinya sama dengan yang
+  /// dibaca layar room, jadi perubahan langsung tampil di sana.
+  ///
+  /// ponytail: sumber foto masih prasetel/tautan; ganti ke unggahan galeri
+  /// saat API media tersedia.
+  Future<void> _pickCourtPhoto(int court) async {
+    final courtName = 'Lapangan $court';
+    final key = courtPhotoKey(venueProfile.name, courtName);
+    final url = TextEditingController();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SheetWrap(
+        title: 'Foto $courtName',
+        children: [
+          Text(
+            'Pilih foto bawaan atau tempel tautan gambar sendiri. Foto ini '
+            'langsung dipakai semua room yang memilih lapangan ini.',
+            style: T.small,
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 92,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: CourtPhoto.presets(key).length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (_, i) => _PhotoChoice(
+                url: CourtPhoto.presets(key)[i],
+                onTap: (value) => Navigator.pop(sheetContext, value),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          LabeledField(
+            label: 'Tautan foto sendiri',
+            controller: url,
+            hint: 'https://…',
+            keyboard: TextInputType.url,
+            prefixIcon: Icons.link,
+          ),
+          const SizedBox(height: 12),
+          SebarButton(
+            label: 'Pakai tautan ini',
+            onPressed: () {
+              final value = url.text.trim();
+              if (!value.startsWith('http')) return;
+              Navigator.pop(sheetContext, value);
+            },
+          ),
+        ],
+      ),
+    );
+    url.dispose();
+    if (picked == null) return;
+    ref.read(courtPhotosProvider.notifier).setPhoto(key, picked);
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Foto $courtName diperbarui.')));
+  }
+
   void _openSlot(BuildContext context, VenueSlot slot) {
     final editable = slot.status != SlotStatus.booked;
     showModalBottomSheet<void>(
@@ -191,6 +253,57 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
       builder: (_) => SheetWrap(
         title: 'Slot ${formatTime(slot.start)}–${formatTime(slot.end)}',
         children: [
+          Stack(
+            children: [
+              CourtPhoto(
+                venue: venueProfile.name,
+                court: 'Lapangan ${slot.court}',
+                height: 150,
+                radius: 18,
+              ),
+              Positioned(
+                right: 10,
+                bottom: 10,
+                child: Material(
+                  color: C.ink.withValues(alpha: 0.78),
+                  borderRadius: BorderRadius.circular(999),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _pickCourtPhoto(slot.court);
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 11,
+                        vertical: 7,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.photo_camera_outlined,
+                            size: 13,
+                            color: Colors.white,
+                          ),
+                          SizedBox(width: 5),
+                          Text(
+                            'Ganti foto',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           Row(
             children: [
               Pill(
@@ -230,7 +343,9 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
                     icon: slot.status == SlotStatus.closed
                         ? Icons.lock_open
                         : Icons.lock_outline,
-                    color: slot.status == SlotStatus.closed ? C.green : C.coral,
+                    color: slot.status == SlotStatus.closed
+                        ? C.primary
+                        : C.danger,
                     onPressed: () {
                       ref
                           .read(venueSlotsProvider.notifier)
@@ -286,7 +401,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Simpan', style: TextStyle(color: C.pink)),
+            child: const Text('Simpan', style: TextStyle(color: C.primary)),
           ),
         ],
       ),
@@ -294,6 +409,50 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
     final price = int.tryParse((value ?? '').replaceAll('.', ''));
     if (price == null || price < 0) return;
     ref.read(venueSlotsProvider.notifier).setPrice(slot.id, price);
+  }
+}
+
+/// Pilihan foto bawaan pada sheet ganti foto lapangan.
+class _PhotoChoice extends StatelessWidget {
+  const _PhotoChoice({required this.url, required this.onTap});
+
+  final String url;
+  final ValueChanged<String> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onTap(url),
+      borderRadius: BorderRadius.circular(14),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox(
+          width: 140,
+          height: 92,
+          child: Image.network(
+            url,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => const _PhotoChoiceFallback(),
+            loadingBuilder: (_, child, progress) =>
+                progress == null ? child : const _PhotoChoiceFallback(),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoChoiceFallback extends StatelessWidget {
+  const _PhotoChoiceFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      color: C.primarySoft,
+      child: Center(
+        child: Icon(Icons.stadium_outlined, size: 22, color: C.primary),
+      ),
+    );
   }
 }
 
@@ -323,9 +482,9 @@ class _DayStrip extends StatelessWidget {
               duration: const Duration(milliseconds: 150),
               width: 48,
               decoration: BoxDecoration(
-                color: active ? C.purple : C.surface,
+                color: active ? C.primary : C.surface,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: active ? C.purple : C.line),
+                border: Border.all(color: active ? C.primary : C.line),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -414,9 +573,9 @@ class _CourtChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 13),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: selected ? C.purple : C.surface,
+            color: selected ? C.primary : C.surface,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: selected ? C.purple : C.line),
+            border: Border.all(color: selected ? C.primary : C.line),
           ),
           child: Text(
             label,
@@ -643,10 +802,10 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
                     height: 44,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: _court == c ? C.purple : C.surface,
+                      color: _court == c ? C.primary : C.surface,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: _court == c ? C.purple : C.line,
+                        color: _court == c ? C.primary : C.line,
                       ),
                     ),
                     child: Text(
@@ -663,6 +822,13 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
               if (c != venue.courts) const SizedBox(width: 8),
             ],
           ],
+        ),
+        const SizedBox(height: 14),
+        CourtPhoto(
+          venue: venueProfile.name,
+          court: 'Lapangan $_court',
+          height: 140,
+          radius: 18,
         ),
         const SizedBox(height: 14),
         const Text('Jam mulai', style: T.label),
@@ -682,9 +848,9 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
                   width: 56,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: active ? C.purple : C.surface,
+                    color: active ? C.primary : C.surface,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: active ? C.purple : C.line),
+                    border: Border.all(color: active ? C.primary : C.line),
                   ),
                   child: Text(
                     '${h.toString().padLeft(2, '0')}:00',
@@ -712,10 +878,10 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
                     height: 44,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: _duration == d ? C.purple : C.surface,
+                      color: _duration == d ? C.primary : C.surface,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: _duration == d ? C.purple : C.line,
+                        color: _duration == d ? C.primary : C.line,
                       ),
                     ),
                     child: Text(
@@ -761,7 +927,7 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
                       fontSize: 15.5,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.4,
-                      color: C.pinkDeep,
+                      color: C.primaryDeep,
                     ),
                   ),
                 ],
@@ -811,7 +977,7 @@ class VenueAnalyticsTab extends StatelessWidget {
       padding: kScreenPad,
       children: [
         SportPanel(
-          gradient: C.tealPanel,
+          gradient: C.primaryPanel,
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -892,7 +1058,7 @@ class VenueAnalyticsTab extends StatelessWidget {
                               Container(
                                 height: 92 * p.$2 / maxPeak,
                                 decoration: BoxDecoration(
-                                  color: p.$2 == maxPeak ? C.green : C.mint,
+                                  color: p.$2 == maxPeak ? C.primary : C.mint,
                                   borderRadius: const BorderRadius.vertical(
                                     top: Radius.circular(5),
                                   ),
@@ -918,7 +1084,7 @@ class VenueAnalyticsTab extends StatelessWidget {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  const Icon(Icons.bolt, size: 15, color: C.green),
+                  const Icon(Icons.bolt, size: 15, color: C.primary),
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(
@@ -968,7 +1134,7 @@ class VenueAnalyticsTab extends StatelessWidget {
           radius: 18,
           child: Row(
             children: [
-              const Icon(Icons.query_stats, size: 16, color: C.green),
+              const Icon(Icons.query_stats, size: 16, color: C.primary),
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
@@ -1008,7 +1174,7 @@ class _Kpi extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 16, color: danger ? C.coral : C.green),
+          Icon(icon, size: 16, color: danger ? C.danger : C.primary),
           const SizedBox(height: 6),
           Text(
             value,
@@ -1063,8 +1229,8 @@ class _LineChartPainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            C.green.withValues(alpha: 0.22),
-            C.green.withValues(alpha: 0),
+            C.primary.withValues(alpha: 0.22),
+            C.primary.withValues(alpha: 0),
           ],
         ).createShader(Offset.zero & size),
     );
@@ -1072,7 +1238,7 @@ class _LineChartPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = C.green
+        ..color = C.primary
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.2
         ..strokeCap = StrokeCap.round,
@@ -1084,7 +1250,7 @@ class _LineChartPainter extends CustomPainter {
       canvas.drawCircle(
         p,
         2.2,
-        Paint()..color = i == values.length - 1 ? C.amber : C.green,
+        Paint()..color = i == values.length - 1 ? C.amber : C.primary,
       );
     }
   }
@@ -1123,7 +1289,7 @@ class _VenueScanTabState extends State<VenueScanTab> {
     if (code == 'SEB-4K2P') {
       setState(() {
         _result = 'VALID';
-        _resultDetail = 'Raka Pratama · skor +2 · Badminton Jumat Malam';
+        _resultDetail = 'Raka Pratama · Badminton Jumat Malam';
         _history.insert(0, (code, 'Raka · 19:00 Lapangan 1', true));
       });
     } else if (code == 'SEB-4K2P-DUP') {
@@ -1164,12 +1330,12 @@ class _VenueScanTabState extends State<VenueScanTab> {
                 decoration: BoxDecoration(
                   color: C.surface,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: C.green, width: 2),
+                  border: Border.all(color: C.primary, width: 2),
                 ),
                 child: const Icon(
                   Icons.qr_code_scanner,
                   size: 42,
-                  color: C.green,
+                  color: C.primary,
                 ),
               ),
               const SizedBox(height: 14),
@@ -1197,7 +1363,7 @@ class _VenueScanTabState extends State<VenueScanTab> {
             decoration: BoxDecoration(
               color: _result == 'VALID'
                   ? C.mint
-                  : C.pink.withValues(alpha: 0.16),
+                  : C.primary.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
@@ -1205,7 +1371,7 @@ class _VenueScanTabState extends State<VenueScanTab> {
                 Icon(
                   _result == 'VALID' ? Icons.verified : Icons.error_outline,
                   size: 20,
-                  color: _result == 'VALID' ? C.greenDeep : C.coral,
+                  color: _result == 'VALID' ? C.primaryDeep : C.danger,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1217,7 +1383,7 @@ class _VenueScanTabState extends State<VenueScanTab> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: _result == 'VALID' ? C.greenDeep : C.coral,
+                          color: _result == 'VALID' ? C.primaryDeep : C.danger,
                         ),
                       ),
                       const SizedBox(height: 1),
@@ -1253,7 +1419,7 @@ class _VenueScanTabState extends State<VenueScanTab> {
                   Icon(
                     h.$3 ? Icons.verified_outlined : Icons.error_outline,
                     size: 16,
-                    color: h.$3 ? C.green : C.coral,
+                    color: h.$3 ? C.primary : C.danger,
                   ),
                   const SizedBox(width: 9),
                   Expanded(
@@ -1277,7 +1443,7 @@ class _VenueScanTabState extends State<VenueScanTab> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: h.$3 ? C.green : C.coral,
+                      color: h.$3 ? C.primary : C.danger,
                     ),
                   ),
                 ],

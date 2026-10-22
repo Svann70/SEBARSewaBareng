@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'core/theme.dart';
 import 'core/widgets.dart';
 import 'features/auth/login_screen.dart';
+import 'features/auth/register_screen.dart';
 import 'features/booking/ticket_screen.dart';
 import 'features/booking/tickets_screen.dart';
 import 'features/community/community_screen.dart';
@@ -11,6 +12,7 @@ import 'features/create/create_lobby_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/lobby/lobby_detail_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/rooms/rooms_screen.dart';
 import 'features/venue/venue_shell.dart';
 import 'features/venue/venue_tabs.dart';
 import 'features/wallet/wallet_screen.dart';
@@ -19,7 +21,9 @@ final _router = GoRouter(
   initialLocation: '/login',
   routes: [
     GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+    GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
     GoRoute(path: '/home', builder: (_, _) => const HomeShell()),
+    GoRoute(path: '/rooms', builder: (_, _) => const RoomsScreen()),
     GoRoute(
       path: '/lobby/:id',
       builder: (_, s) => LobbyDetailScreen(id: s.pathParameters['id']!),
@@ -169,7 +173,7 @@ class CircleIconButton extends StatelessWidget {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: C.pink,
+                  color: C.primary,
                   shape: BoxShape.circle,
                   border: Border.all(color: C.bg, width: 1.5),
                 ),

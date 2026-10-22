@@ -34,7 +34,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return SafeArea(
       bottom: false,
       child: RefreshIndicator(
-        color: C.pink,
+        color: C.primary,
         backgroundColor: C.surface,
         onRefresh: () async {
           await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -42,7 +42,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: ListView(
           padding: kScreenPad,
           children: [
-            _Greeting(score: me.score),
+            const _Greeting(),
             const SizedBox(height: 16),
             SearchField(
               controller: _search,
@@ -59,8 +59,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     icon: Icons.groups_outlined,
                     value: '${lobbies.length}',
                     label: 'Room',
-                    color: C.teal,
-                    tint: C.tealSoft,
+                    color: C.primary,
+                    tint: C.primarySoft,
                   ),
                 ),
                 Expanded(
@@ -68,30 +68,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     icon: Icons.confirmation_number_outlined,
                     value: '${bookings.length}',
                     label: 'Tiket',
-                    color: C.pink,
-                    tint: C.pinkSoft,
+                    color: C.primary,
+                    tint: C.primarySoft,
                   ),
                 ),
                 Expanded(
                   child: CountCard(
-                    icon: Icons.emoji_events_outlined,
-                    value: '${me.score}',
-                    label: 'Skor',
-                    color: C.amber,
-                    tint: C.amberSoft,
+                    icon: Icons.qr_code_scanner,
+                    value: '${bookings.where((b) => b.checkedIn).length}',
+                    label: 'Check-in',
+                    color: C.primary,
+                    tint: C.primarySoft,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 18),
             TrendChartCard(
-              title: 'Progres skor',
-              subtitle: '6 bulan terakhir',
-              headline: '${me.score}%',
-              badge: '+22 poin',
-              values: [
-                for (final n in [78, 84, 80, 88, 90, me.score]) n.toDouble(),
-              ],
+              title: 'Aktivitas main',
+              subtitle: 'sesi per bulan · 6 bulan terakhir',
+              headline: '18',
+              badge: '+6 sesi',
+              values: const [8, 10, 9, 14, 12, 18],
               labels: const ['Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt'],
             ),
             const SizedBox(height: 18),
@@ -105,8 +103,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const SizedBox(height: 12),
             SectionHeader(
               'Room tersedia',
-              action: 'Kode undangan',
-              onTap: () => _enterInviteCode(context, ref),
+              action: 'Semua (${lobbies.length})',
+              onTap: () => context.push('/rooms'),
             ),
             const SizedBox(height: 8),
             if (lobbies.isEmpty)
@@ -125,7 +123,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               )
             else
-              for (var i = 0; i < lobbies.length; i++)
+              for (var i = 0; i < lobbies.length && i < 5; i++)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: RankRow(
@@ -143,7 +141,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onTap: () => context.push('/lobby/${lobbies[i].id}'),
                   ),
                 ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
+            GhostButton(
+              label: 'Punya kode undangan?',
+              icon: Icons.vpn_key_outlined,
+              height: 48,
+              onPressed: () => _enterInviteCode(context, ref),
+            ),
+            const SizedBox(height: 14),
             SectionHeader(
               'Tiket berikutnya',
               action: 'Semua',
@@ -193,13 +198,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: C.pinkSoft,
+                            color: C.primarySoft,
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: const Icon(
                             Icons.qr_code_2,
                             size: 20,
-                            color: C.pinkDeep,
+                            color: C.primaryDeep,
                           ),
                         ),
                       ],
@@ -213,9 +218,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   static Color _roomTint(int i) => switch (i % 4) {
-    0 => C.pinkSoft,
+    0 => C.primarySoft,
     2 => C.amberSoft,
-    3 => C.tealSoft,
+    3 => C.primarySoft,
     _ => C.surface,
   };
 
@@ -238,11 +243,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 style: TextStyle(
                   fontWeight: c == current ? FontWeight.w800 : FontWeight.w600,
                   fontSize: 15,
-                  color: c == current ? C.pink : C.ink,
+                  color: c == current ? C.primary : C.ink,
                 ),
               ),
               trailing: c == current
-                  ? const Icon(Icons.check_circle, color: C.pink, size: 20)
+                  ? const Icon(Icons.check_circle, color: C.primary, size: 20)
                   : null,
               onTap: () => Navigator.pop(context, c),
             ),
@@ -301,9 +306,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 }
 
 class _Greeting extends StatelessWidget {
-  const _Greeting({required this.score});
-
-  final int score;
+  const _Greeting();
 
   @override
   Widget build(BuildContext context) {
@@ -319,8 +322,6 @@ class _Greeting extends StatelessWidget {
             ],
           ),
         ),
-        ScoreBadge(score),
-        const SizedBox(width: 8),
         CircleIconButton(
           icon: Icons.forum_outlined,
           badge: true,
@@ -331,7 +332,7 @@ class _Greeting extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: C.pinkFill,
+            color: C.primary,
             shape: BoxShape.circle,
             border: Border.all(color: C.surface, width: 3),
             boxShadow: C.cardShadow,
@@ -361,7 +362,7 @@ class _SaldoPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SportPanel(
-      gradient: C.pinkPanel,
+      gradient: C.primaryPanel,
       radius: 30,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       child: Column(
@@ -475,7 +476,7 @@ class _SportCircles extends ConsumerWidget {
           _SportCircle(
             label: 'Semua',
             icon: Icons.grid_view_rounded,
-            color: C.tealFill,
+            color: C.primaryFill,
             selected: active == null,
             onTap: () => notifier.setSport(null),
           ),
@@ -578,7 +579,7 @@ class _CityLine extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(
           children: [
-            const Icon(Icons.location_on_outlined, size: 18, color: C.pink),
+            const Icon(Icons.location_on_outlined, size: 18, color: C.primary),
             const SizedBox(width: 6),
             Expanded(
               child: Text(
@@ -607,7 +608,7 @@ class _CityLine extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: C.pink,
+                color: C.primary,
               ),
             ),
           ],

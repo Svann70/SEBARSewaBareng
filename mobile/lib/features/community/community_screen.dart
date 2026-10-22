@@ -123,7 +123,7 @@ class _ChannelChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? C.pink : C.surface,
+      color: selected ? C.primary : C.surface,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -133,7 +133,7 @@ class _ChannelChip extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: selected ? C.pink : C.line),
+            border: Border.all(color: selected ? C.primary : C.line),
           ),
           child: Text(
             label,
@@ -186,7 +186,7 @@ class _Message extends StatelessWidget {
                 color: mine ? null : C.surface,
                 gradient: mine
                     ? const LinearGradient(
-                        colors: C.pinkPanel,
+                        colors: C.primaryPanel,
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       )
@@ -271,14 +271,14 @@ class _Composer extends StatelessWidget {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(999),
-                    borderSide: const BorderSide(color: C.pink, width: 1.4),
+                    borderSide: const BorderSide(color: C.primary, width: 1.4),
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 8),
             Material(
-              color: C.pink,
+              color: C.primary,
               shape: const CircleBorder(),
               child: InkWell(
                 customBorder: const CircleBorder(),

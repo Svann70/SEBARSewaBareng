@@ -9,22 +9,21 @@ void main() {
     expect(roundingSurplus(400000, 8), 0);
   });
 
-  test('kebijakan penalti tiga zona (T-02)', () {
+  test('kebijakan penalti: denda 15% di bawah 6 jam (T-02)', () {
     final far = penaltyFor(untilStart: const Duration(hours: 48));
     expect(far.refundPct, 100);
-    expect(far.scoreDelta, 0);
+    expect(far.penaltyPct, 0);
 
     final soon = penaltyFor(untilStart: const Duration(hours: 3));
-    expect(soon.refundPct, 50);
-    expect(soon.penaltyPct, 50);
-    expect(soon.scoreDelta, -10);
+    expect(soon.refundPct, 85);
+    expect(soon.penaltyPct, 15);
 
     final ghost = penaltyFor(
       untilStart: const Duration(hours: 1),
       noShow: true,
     );
     expect(ghost.refundPct, 0);
-    expect(ghost.scoreDelta, -25);
+    expect(ghost.penaltyPct, 100);
   });
 
   test('rupiah pakai titik ribuan', () {

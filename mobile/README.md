@@ -2,8 +2,8 @@
 
 Frontend MVP untuk patungan sewa lapangan olahraga. Acuan desain: `../SDD_SEBAR.md`
 §7 (design token, peta navigasi, layar) dengan bahasa visual dari
-`DesignReference/DesignNew.jpg` (kanvas krem, kartu krem, panel pekat
-teal/pink/ungu/amber, angka besar, dock bawah dengan aksi utama di tengah).
+`DesignReference/DesignNew.jpg` (kanvas krem, kartu krem, panel pekat hijau
+dan amber, angka besar, dock bawah dengan aksi utama di tengah).
 
 ## Jalan
 
@@ -20,24 +20,27 @@ APK: `flutter build apk --debug` → `build/app/outputs/flutter-apk/`.
 
 | Route | Layar | Isi |
 |---|---|---|
-| `/login` | Auth | Pilih akun Pemain atau Venue, email/password |
-| `/home` | Beranda pemain | Kolom cari, saldo, skor, filter lingkaran olahraga, linimasa room |
-| `/lobby/:id` | Detail room | Header gradien + kartu ringkasan bertumpuk (AppDesign2) |
-| - | Sheet join | Split bill, sandi room (jika privat), saldo, checkbox setuju |
-| `/create` | Buat room | Pilih venue + lapangan (bukan ketik manual), harga ikut tarif venue/jam, akses publik/link/sandi |
+| `/login` | Masuk | Satu form untuk pemain dan mitra; peran dibaca dari akun |
+| `/register` | Daftar | Layar terpisah: nama, email, password, ulangi password |
+| `/home` | Beranda pemain | Kolom cari, saldo, filter lingkaran olahraga, 5 room teratas + tautan ke semua room |
+| `/rooms` | Semua room | Daftar penuh dikelompokkan per tanggal, cari + filter olahraga/kota |
+| `/lobby/:id` | Detail room | Foto lapangan + header pekat, ringkasan tagihan bertumpuk |
+| - | Sheet join | Split bill, pilihan bayar (dompet / QRIS-transfer), sandi room, checkbox setuju |
+| `/create` | Buat room | Pilih venue + lapangan (bukan ketik manual), foto lapangan, harga ikut tarif venue/jam, akses publik/link/sandi |
 | `/community` | Komunitas | Chat 4 kanal, kirim pesan, waktu lokal |
 | `/ticket/:id` | Tiket QR | QR, kode booking, simulasi scan |
 | - | Dompet | Saldo tersedia/terkunci, riwayat mutasi, top up |
-| - | Profil | Skor + progress, riwayat delta, statistik |
-| `/venue` | Shell venue | Beranda omzet, jadwal slot, scan, akun venue + pencairan |
+| - | Profil | Statistik main, riwayat main, pintasan mode mitra |
+| `/venue` | Shell venue | Beranda omzet + papan okupansi, jadwal slot, scan, akun venue + pencairan |
 | `/venue/analytics` | Analytics venue | Omzet, okupansi, peak hours, tren pendapatan |
 
 ## Dua akun, satu aplikasi
 
-Pola sama seperti GoFood vs GoFood Merchant, tapi satu APK:
+Pola sama seperti GoFood vs GoFood Merchant, tapi satu APK dan satu pintu masuk:
 
-- Login memilih peran lewat dua kartu (bukan dropdown). Peran menentukan
-  beranda: `AccountRole.player.home` = `/home`,
+- Login dan daftar dipisah supaya calon pengguna tidak bingung. Tidak ada
+  pemilih peran di form; peran ditentukan dari akun (`roleForEmail`).
+- Peran menentukan beranda: `AccountRole.player.home` = `/home`,
   `AccountRole.venue.home` = `/venue`.
 - `DockNav` menerima daftar item, jadi dock venue berbeda: Beranda, Jadwal,
   Scan, Akun. FAB tengah membuka sheet tambah slot.
@@ -88,7 +91,7 @@ lib/
 ├── core/money.dart       # split bill, kebijakan penalti, format Rupiah
 ├── core/widgets.dart     # panel, pill, dock, count card, rank row, segmented
 ├── data/state.dart       # model + Riverpod (room, wallet, booking, chat, filter)
-└── features/{auth,home,lobby,create,booking,wallet,profile,community,venue}/
+└── features/{auth(login,register),home,rooms,lobby,create,booking,wallet,profile,community,venue}/
 ```
 
 State masih in-memory (seed §17.3). Saat API disambungkan: ganti isi
@@ -97,37 +100,66 @@ sudah dibaca dari state, bukan dihitung di widget.
 
 ## Warna
 
-Mengikuti `DesignReference/DesignNew.jpg`: kanvas krem hangat `#F6EFE7`, kartu
-`#FFFCF6`, teks ink `#1C2B29`. Aksen pink `#C93F62` (`C.pinkFill` `#EE5A7E`
-untuk bidang non-teks) untuk aksi utama dan saldo, teal `#2E7D70` untuk
-omzet/okupansi, amber `#A9660F` (`C.amberFill` `#EFA53A`) untuk denda. Panel
-pekat (`C.pinkPanel`, `C.tealPanel`, `C.amberPanel`) memakai teks putih dengan
-rasio kontras ≥ 4,5:1 untuk teks kecil; blok terang memakai teks ink.
+Satu warna utama, satu aksen, sisanya netral — supaya mata tidak lelah dan
+layar tidak ramai:
+
+- **Hijau `#00A27D`** (`C.primaryFill`, #00A27D): aksi, uang, status positif.
+  Teks hijau di atas krem memakai `C.primary` `#00664F` (kontras 5,7:1);
+  kanvas krem `#EDE8D0`, kartu `#FAF7EA`, teks ink `#1B2B26`.
+- **Amber `#F1C338`** (`C.amberFill`): peringatan, denda, hal yang perlu
+  ditunda. Teks amber di atas krem memakai `C.amber` `#7A5A0A` (5,2:1).
+- **Merah `#A5243C`** (`C.danger`): hanya untuk aksi merusak dan tidak-datang,
+  teks/ikon kecil saja. Bukan warna brand.
+- Panel pekat (`C.primaryPanel`, `C.inkPanel`, `C.amberPanel`) memakai teks
+  putih, rasio ≥ 4,5:1 untuk teks kecil; blok terang untuk teks ink.
+- Warna terang (`primaryFill`, `amberFill`) tidak pernah dipakai sebagai
+  latar teks putih/kecil — putih di `#00A27D` cuma 3,3:1, di `#F1C338` 1,9:1.
+- Aturan pemakaian: maksimal satu bidang berwarna besar per layar, cabang
+  olahraga dibedakan lewat ikon + label (bukan warna), dan warna tidak pernah
+  jadi satu-satunya penanda status.
 
 ## Bahasa visual
 
 Diambil dari referensi:
 
-- **Panel gradien pekat dengan potongan diagonal** (`SportPanel`) — teal
-  untuk saldo, pink untuk harga, ungu untuk kuota/omzet, amber untuk denda.
+- **Panel pekat dengan potongan diagonal** (`SportPanel`) — hijau untuk uang
+  dan CTA, netral gelap untuk header informasi, amber untuk konteks denda.
 - **Angka besar sebagai fokus** (saldo, harga per orang, omzet) di panel
   paling atas tiap layar.
-- **Dock bawah mengambang**: kapsul krem, 2 tujuan kiri, 2 kanan, FAB pink
-  di tengah tanpa label. Semua layar memakai `kScreenPad` (bawah 112) supaya
-  baris terakhir tidak tertutup dock + FAB.
+- **Dock bawah mengambang**: kapsul krem, 2 tujuan kiri, 2 kanan, tombol
+  tengah berbentuk pil dengan ikon + teks (`Buat room` pemain, `Buka slot`
+  venue) supaya aksinya jelas tanpa menebak ikon. Semua layar memakai
+  `kScreenPad` (bawah 112) agar baris terakhir tidak tertutup dock + FAB.
 - **Skala tipografi**: 11 ukuran saja (12, 13, 15, 15.5, 18, 20, 24, 26, 32,
   34, 40) lewat token `T`; tidak ada teks di bawah 12px.
-- **Daftar room sebagai linimasa**: tanggal di rel kiri, kartu room di kanan.
-- **Filter olahraga berbentuk lingkaran**, bukan chip kotak.
-- **Detail room**: header gradien penuh, kartu ringkasan bertumpuk dengan
-  cincin kuota di tengah, lalu Detail / Lokasi / Peserta.
+- **Card hitung + baris peringkat** (`CountCard`, `RankRow`) untuk statistik
+  dan papan okupansi; `StatRing` (cincin progres) dipakai di Profil supaya
+  angka main/check-in/no-show punya konteks, bukan cuma angka.
+- **Foto lapangan dikelola venue** (`CourtPhoto` + `courtPhotosProvider`).
+  Venue menekan `Ganti foto` di detail slot dan memilih foto bawaan atau
+  menempel tautan; kunci fotonya `venue|lapangan` sehingga room yang memakai
+  lapangan itu ikut berubah seketika. Gagal muat → gradien brand + ikon, jadi
+  tata letak tetap utuh.
+- **Detail room**: header berfoto dengan lapisan gelap pengaman, kartu
+  ringkasan bertumpuk dengan cincin kuota di tengah, lalu Detail / Lokasi /
+  Peserta.
 - **Teks pengguna tanpa istilah internal**: kode ledger (TOPUP/CAPTURE)
   dipetakan ke label manusia (`WalletEntryX.typeLabel`), pesan scan memakai
   kalimat biasa.
 
+## Pembayaran & pembatalan
+
+- Sheet join punya dua opsi: **saldo dompet** (langsung dikunci) atau
+  **QRIS/transfer bank** (di luar dompet, instruksi menyusul, slot aman
+  15 menit). `LobbiesNotifier.join(..., useWallet: false)` tidak menyentuh
+  saldo.
+- Pembatalan dua zona: batal **≥ 6 jam** refund penuh, batal **< 6 jam**
+  denda **15%** (refund 85%), tidak datang dana hangus. Aturan tampil sebelum
+  user setuju.
+
 ## Tes
 
-- `test/money_test.dart` - T-01 split bill (ceil + surplus), T-02 penalti 3 zona
+- `test/money_test.dart` - T-01 split bill (ceil + surplus), T-02 denda 15% < 6 jam
 - `test/access_test.dart` - akses room, kode undangan, peran akun mitra
 - `test/screens_test.dart` - smoke semua layar di 360x740 tanpa overflow
 - `test/lobby_detail_test.dart`, `test/widget_test.dart` - render dasar

@@ -1,62 +1,77 @@
 import 'package:flutter/material.dart';
 
-/// Token warna SEBAR — mengikuti design referensi:
-/// kanvas krem hangat, blok warna pink / teal / amber, kartu krem,
-/// pil gelap, dan angka besar.
+/// Token warna SEBAR.
 ///
-/// Aturan kontras:
-/// - blok pekat (`*Panel`) untuk teks putih (rasio ≥ 4,5:1),
-/// - blok terang (`*Fill`) untuk teks [ink] (≥ 4,5:1),
-/// - teks aksen di atas krem memakai varian gelap (`*Deep`).
+/// Palet acuan: hijau `#00A27D`, krem `#EDE8D0`, amber `#F1C338` — satu
+/// warna utama, satu aksen, sisanya netral. Merah/ungu lama dihapus supaya
+/// mata tidak lelah dan layar tidak ramai.
+///
+/// Aturan pakai (jangan dilanggar tanpa alasan):
+/// 1. Bidang berwarna besar maksimal satu per layar; sisanya kartu krem.
+/// 2. Hijau = aksi, uang, status positif. Amber = peringatan, denda, hal
+///    yang perlu ditunda.
+/// 3. Warna terang (`primaryFill` #00A27D, `amberFill` #F1C338) hanya untuk
+///    bidang non-teks (ikon, grafik, chip) atau bersama teks [ink] —
+///    teks putih di atasnya gagal kontras. Teks hijau di krem pakai
+///    [primary]/[primaryDeep], teks amber pakai [amber].
+/// 4. Panel pekat (`*Panel`) untuk teks putih (rasio ≥ 4,5:1).
+/// 5. Merah ([danger]) hanya untuk aksi merusak, teks kecil saja.
 class C {
   // ── Kanvas & permukaan ──────────────────────────────────────────────────
-  static const bg = Color(0xFFF6EFE7);
-  static const bgDeep = Color(0xFFEDE2D6);
-  static const surface = Color(0xFFFFFCF6);
-  static const surfaceAlt = Color(0xFFF4EADF);
-  static const line = Color(0xFFE7D9CB);
-  static const shadow = Color(0x1A2A2320);
+  static const bg = Color(0xFFEDE8D0);
+  static const bgDeep = Color(0xFFE2DCC0);
+  static const surface = Color(0xFFFAF7EA);
+  static const surfaceAlt = Color(0xFFE7E1C8);
+  static const line = Color(0xFFD8D1B4);
+  static const shadow = Color(0x14202B23);
 
   // ── Teks ─────────────────────────────────────────────────────────────────
-  static const ink = Color(0xFF1C2B29);
-  static const muted = Color(0xFF5A6862);
-  static const faint = Color(0xFF6E7A73);
+  static const ink = Color(0xFF1B2B26);
+  static const muted = Color(0xFF55604F);
+  static const faint = Color(0xFF66705F);
 
-  // ── Aksen ────────────────────────────────────────────────────────────────
-  static const pink = Color(0xFFC93F62);
-  static const pinkFill = Color(0xFFEE5A7E);
-  static const pinkDeep = Color(0xFF9E2A47);
-  static const pinkSoft = Color(0xFFFAD9E3);
-  static const coral = Color(0xFFB3263F);
+  // ── Hijau (#00A27D) ─────────────────────────────────────────────────────
+  /// Teks/aksi hijau di atas krem: kontras 5,7:1.
+  static const primary = Color(0xFF00664F);
 
-  static const teal = Color(0xFF2E7D70);
-  static const tealFill = Color(0xFF349585);
-  static const tealDeep = Color(0xFF1E5A50);
-  static const tealSoft = Color(0xFFD9EEE7);
-  static const green = Color(0xFF1E7A5F);
-  static const greenDeep = Color(0xFF14513F);
+  /// Bidang terang: isian, ikon, grafik. Jangan dipakai untuk teks kecil.
+  static const primaryFill = Color(0xFF00A27D);
 
-  static const amber = Color(0xFFA9660F);
-  static const amberDeep = Color(0xFF7A4708);
-  static const amberSoft = Color(0xFFFBE7C2);
-  static const amberFill = Color(0xFFEFA53A);
-  static const purple = Color(0xFF6B58B8);
-  static const purpleSoft = Color(0xFFEDE8FB);
+  static const primaryDeep = Color(0xFF00412F);
+  static const primarySoft = Color(0xFFD6EFE6);
 
-  static const cream = Color(0xFFFFFCF6);
+  // ── Amber (#F1C338) ─────────────────────────────────────────────────────
+  /// Teks amber di atas krem: kontras 5,2:1.
+  static const amber = Color(0xFF7A5A0A);
+
+  /// Bidang terang: isian, ikon peringatan. Pasangan teks [ink].
+  static const amberFill = Color(0xFFF1C338);
+
+  static const amberDeep = Color(0xFF5A4206);
+  static const amberSoft = Color(0xFFF8EDC6);
+
+  /// Hanya untuk aksi merusak (hapus/batalkan). Bukan warna brand.
+  static const danger = Color(0xFFA5243C);
+  static const dangerSoft = Color(0xFFF6E0E4);
+
+  static const cream = Color(0xFFFAF7EA);
 
   // Alias lama supaya layar lain tetap kompatibel.
   static const orange = amber;
-  static const mint = tealSoft;
   static const butter = amberSoft;
-  static const lilac = purpleSoft;
-  static const blush = pinkSoft;
+  static const mint = primarySoft;
+  static const blush = primarySoft;
+  static const lilac = primarySoft;
 
   // ── Panel pekat (teks putih aman) ────────────────────────────────────────
-  static const pinkPanel = [Color(0xFFC93F62), Color(0xFF9E2A47)];
-  static const tealPanel = [Color(0xFF2E7D70), Color(0xFF1E5A50)];
-  static const purplePanel = [Color(0xFF6B58B8), Color(0xFF4A3C8C)];
-  static const amberPanel = [Color(0xFFA9660F), Color(0xFF7A4708)];
+  /// Hijau pekat: panel uang/CTA (teks putih 5,3:1).
+  static const primaryPanel = [Color(0xFF007A5E), Color(0xFF00412F)];
+
+  /// Netral pekat: header informasi tanpa beban warna.
+  static const inkPanel = [Color(0xFF26332F), Color(0xFF16211E)];
+
+  /// Amber pekat: konteks denda/peringatan.
+  static const amberPanel = [Color(0xFF7A5A0A), Color(0xFF5A4206)];
 
   static const cardShadow = [
     BoxShadow(color: shadow, blurRadius: 26, offset: Offset(0, 12)),
@@ -163,20 +178,20 @@ const kScreenPadTop = EdgeInsets.fromLTRB(20, 12, 20, 0);
 
 ThemeData buildTheme() {
   const scheme = ColorScheme.light(
-    primary: C.pink,
+    primary: C.primary,
     onPrimary: Colors.white,
-    primaryContainer: C.pinkSoft,
-    onPrimaryContainer: C.pinkDeep,
-    secondary: C.teal,
+    primaryContainer: C.primarySoft,
+    onPrimaryContainer: C.primaryDeep,
+    secondary: C.amber,
     onSecondary: Colors.white,
-    secondaryContainer: C.tealSoft,
-    onSecondaryContainer: C.tealDeep,
+    secondaryContainer: C.amberSoft,
+    onSecondaryContainer: C.amberDeep,
     tertiary: C.amber,
     onTertiary: Colors.white,
     surface: C.surface,
     onSurface: C.ink,
     surfaceContainerHighest: C.surfaceAlt,
-    error: C.coral,
+    error: C.danger,
     onError: Colors.white,
     outline: C.line,
     outlineVariant: C.line,
@@ -228,11 +243,11 @@ ThemeData buildTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: C.pink, width: 1.6),
+        borderSide: const BorderSide(color: C.primary, width: 1.6),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: C.coral, width: 1.4),
+        borderSide: const BorderSide(color: C.danger, width: 1.4),
       ),
     ),
     snackBarTheme: SnackBarThemeData(
@@ -258,26 +273,27 @@ ThemeData buildTheme() {
     ),
     sliderTheme: base.sliderTheme.copyWith(
       trackHeight: 6,
-      activeTrackColor: C.pink,
+      activeTrackColor: C.primary,
       inactiveTrackColor: C.surfaceAlt,
-      thumbColor: C.pink,
-      overlayColor: C.pink.withValues(alpha: 0.12),
+      thumbColor: C.primary,
+      overlayColor: C.primary.withValues(alpha: 0.12),
     ),
     checkboxTheme: CheckboxThemeData(
       fillColor: WidgetStateProperty.resolveWith(
-        (s) => s.contains(WidgetState.selected) ? C.pink : Colors.transparent,
+        (s) =>
+            s.contains(WidgetState.selected) ? C.primary : Colors.transparent,
       ),
       checkColor: const WidgetStatePropertyAll(Colors.white),
       side: const BorderSide(color: C.faint, width: 1.6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
     ),
     progressIndicatorTheme: const ProgressIndicatorThemeData(
-      color: C.pink,
+      color: C.primary,
       linearTrackColor: C.surfaceAlt,
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: C.pink,
+        foregroundColor: C.primary,
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
       ),
     ),
@@ -285,7 +301,7 @@ ThemeData buildTheme() {
       backgroundColor: C.surface,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-      headerBackgroundColor: C.tealDeep,
+      headerBackgroundColor: C.primaryDeep,
       headerForegroundColor: C.cream,
     ),
     timePickerTheme: TimePickerThemeData(
@@ -293,7 +309,7 @@ ThemeData buildTheme() {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
       hourMinuteColor: WidgetStateColor.resolveWith((s) => C.surfaceAlt),
       dialBackgroundColor: C.surfaceAlt,
-      dialHandColor: C.pink,
+      dialHandColor: C.primary,
       entryModeIconColor: C.muted,
     ),
   );

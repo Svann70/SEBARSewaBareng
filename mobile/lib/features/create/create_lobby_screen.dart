@@ -25,7 +25,6 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
   int _hours = 2;
   DateTime _date = DateTime.now().add(const Duration(days: 2));
   int _quota = 8;
-  int _minScore = 70;
   LobbyAccess _access = LobbyAccess.open;
   final _secret = TextEditingController();
   final _inviteCode =
@@ -71,7 +70,6 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
           start: _start,
           priceTotal: _price,
           quota: _quota,
-          minReliability: _minScore,
           access: _access,
           secret: switch (_access) {
             LobbyAccess.open => null,
@@ -113,7 +111,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
             ),
             const SizedBox(height: 20),
             SportPanel(
-              gradient: C.pinkPanel,
+              gradient: C.primaryPanel,
               radius: 30,
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -218,6 +216,13 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                         ),
                     ],
                   ),
+                  const SizedBox(height: 14),
+                  CourtPhoto(
+                    venue: _venue.name,
+                    court: 'Lapangan $_court',
+                    height: 150,
+                    radius: 20,
+                  ),
                   const SizedBox(height: 18),
                   const _FieldLabel('Tanggal'),
                   const SizedBox(height: 8),
@@ -235,7 +240,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                           const Icon(
                             Icons.event_outlined,
                             size: 19,
-                            color: C.teal,
+                            color: C.primary,
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -277,10 +282,10 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                             width: 62,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: active ? C.teal : C.surfaceAlt,
+                              color: active ? C.primary : C.surfaceAlt,
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
-                                color: active ? C.teal : C.line,
+                                color: active ? C.primary : C.line,
                               ),
                             ),
                             child: Text(
@@ -317,7 +322,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: C.tealSoft,
+                      color: C.primarySoft,
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Row(
@@ -326,7 +331,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                         const Icon(
                           Icons.sell_outlined,
                           size: 18,
-                          color: C.teal,
+                          color: C.primary,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -337,7 +342,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                               height: 1.45,
-                              color: C.tealDeep,
+                              color: C.primaryDeep,
                             ),
                           ),
                         ),
@@ -372,16 +377,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                     current: _quota.toDouble(),
                     onChanged: (v) => setState(() => _quota = v.round()),
                   ),
-                  _SliderField(
-                    label: 'Skor minimum',
-                    value: '$_minScore',
-                    min: 0,
-                    max: 100,
-                    divisions: 20,
-                    current: _minScore.toDouble(),
-                    onChanged: (v) => setState(() => _minScore = v.round()),
-                  ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 16),
                   const _FieldLabel('Akses room'),
                   const SizedBox(height: 10),
                   for (final a in LobbyAccess.values)
@@ -412,7 +408,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.link, size: 18, color: C.purple),
+                          const Icon(Icons.link, size: 18, color: C.primary),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
@@ -433,8 +429,8 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                           ),
                           const Pill(
                             'Bagikan',
-                            color: C.pinkDeep,
-                            background: C.pinkSoft,
+                            color: C.primaryDeep,
+                            background: C.primarySoft,
                           ),
                         ],
                       ),
@@ -555,7 +551,7 @@ class _AccessOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? C.pinkSoft : C.surfaceAlt,
+      color: selected ? C.primarySoft : C.surfaceAlt,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -565,7 +561,7 @@ class _AccessOption extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: selected ? C.pink : C.line,
+              color: selected ? C.primary : C.line,
               width: selected ? 1.4 : 1,
             ),
           ),
@@ -574,7 +570,7 @@ class _AccessOption extends StatelessWidget {
               Icon(
                 access.icon,
                 size: 19,
-                color: selected ? C.pinkDeep : C.muted,
+                color: selected ? C.primaryDeep : C.muted,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -598,7 +594,7 @@ class _AccessOption extends StatelessWidget {
               Icon(
                 selected ? Icons.radio_button_checked : Icons.radio_button_off,
                 size: 20,
-                color: selected ? C.pink : C.faint,
+                color: selected ? C.primary : C.faint,
               ),
             ],
           ),
@@ -635,7 +631,7 @@ class _SelectChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? C.pink : C.surfaceAlt,
+      color: selected ? C.primary : C.surfaceAlt,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -644,7 +640,7 @@ class _SelectChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: selected ? C.pink : C.line),
+            border: Border.all(color: selected ? C.primary : C.line),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
