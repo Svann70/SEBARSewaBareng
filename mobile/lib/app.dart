@@ -70,10 +70,6 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  /// Tab dibangun saat pertama dibuka, lalu dijaga hidup.
-  /// Menghemat frame pertama: hanya Home yang di-layout.
-  final _visited = <int>{0};
-
   static const _pages = [
     HomeScreen(),
     TicketsScreen(),
@@ -84,21 +80,18 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
+      body: Stack(
+        fit: StackFit.expand,
         children: [
+          // Struktur anak tetap (bug Flutter 3.41 semantics parentDataDirty
+          // saat tukar tipe/jumlah child saat runtime); toggle via Offstage.
           for (var i = 0; i < _pages.length; i++)
-            _visited.contains(i)
-                ? RepaintBoundary(child: _pages[i])
-                : const SizedBox.shrink(),
+            Offstage(offstage: _index != i, child: RepaintBoundary(child: _pages[i])),
         ],
       ),
       bottomNavigationBar: DockNav(
         index: _index,
-        onSelect: (i) => setState(() {
-          _index = i;
-          _visited.add(i);
-        }),
+        onSelect: (i) => setState(() => _index = i),
         onCreate: () => context.push('/create'),
       ),
     );

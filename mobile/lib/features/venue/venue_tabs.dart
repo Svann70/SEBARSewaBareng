@@ -187,11 +187,27 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
         padding: const EdgeInsets.only(bottom: 8, top: 2),
         child: Row(
           children: [
-            Text('Lapangan $court', style: T.h3),
+            Flexible(
+              child: Text(
+                'Lapangan $court',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: T.h3,
+              ),
+            ),
             const SizedBox(width: 6),
             Text(
               '· ${mine.length} slot',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 12, color: C.faint),
+            ),
+            const SizedBox(width: 8),
+            GhostButton(
+              label: 'Ganti foto',
+              icon: Icons.photo_camera_outlined,
+              height: 34,
+              onPressed: () => _pickCourtPhoto(court),
             ),
           ],
         ),

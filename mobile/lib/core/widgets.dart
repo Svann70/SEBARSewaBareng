@@ -307,6 +307,7 @@ class GhostButton extends StatelessWidget {
           height: height,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (icon != null) ...[

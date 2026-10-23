@@ -35,7 +35,7 @@ CREATE TABLE venue_photos (
 | Perubahan | Alasan |
 |---|---|
 | `weekend_price_per_hour numeric(12,2)` (nullable, default = `price_per_hour`) | Venue · Lapangan & foto: **Weekday /jam** dan **Weekend /jam** |
-| tabel `court_photos (id, court_id, url, sort, created_at)` | Venue · Lapangan & foto ("Foto contoh · diunggah venue", `1 / 4`) |
+| tabel `court_photos (id, court_id, url, sort, created_at)` | Venue · Jadwal: tombol **Ganti foto** di header tiap lapangan & sheet detail slot (venue pilih foto bawaan / tempel tautan; foto sama dipakai kartu room pemain). UI memakai **satu foto utama** per court → ambil `sort = 0` sebagai cover, atau tambah kolom `courts.cover_photo_url text` |
 | `courts.capacity` sudah ada (2–30) | Dipakai "8 orang" |
 
 `price_per_hour` tetap harga weekday. Saat `POST /venue/slots`, server memilih
@@ -137,7 +137,7 @@ GROUP BY 1, 2;
 | `PATCH /venue/venues/:id` | `name, address, city, description, openHour, closeHour, lat, lng` | edit profil venue |
 | `POST /venue/venues/:id/photos` | `{ url }` | tambah foto venue |
 | `DELETE /venue/venues/:id/photos/:photoId` | — | hapus foto |
-| `POST /venue/courts/:id/photos` | `{ url }` | Lapangan & foto |
+| `POST /venue/courts/:id/photos` | `{ url }` | tombol **Ganti foto** lapangan (header tab Jadwal & detail slot) |
 | `DELETE /venue/courts/:id/photos/:photoId` | — | hapus foto lapangan |
 | `PATCH /venue/courts/:id` (tambah field) | `weekendPricePerHour` | form **Weekday / Weekend** di Lapangan & foto |
 | `DELETE /venue/slots/:id` | — | hapus slot yang belum punya lobby (`409` bila sudah dipakai) |
