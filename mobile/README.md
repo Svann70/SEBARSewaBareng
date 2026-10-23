@@ -86,9 +86,20 @@ Sumber data `venueSlotsProvider` di `lib/data/state.dart`:
   menampilkan chip venue saat akun punya lebih dari satu; `selectVenue`
   memfilter slot tanpa request ulang.
 - Tab Jadwal: strip 7 hari, filter lapangan, ringkasan terisi/kosong/potensi,
-  daftar per lapangan. Tap slot membuka sheet tutup/buka dan ubah harga slot.
+  daftar per lapangan. Tiap header lapangan punya tombol `Ganti foto`. Tap slot
+  membuka sheet tutup/buka dan ubah harga slot.
 - Slot `Terisi` terkunci; hanya slot kosong yang bisa ditutup. Validasi
   bentrok/watertight sekarang di server (unique + exclusion constraint).
+- Soliditas tab Jadwal: smoke `test/jadwal_smoke.dart` render tab di 360x740
+  (via dock dan langsung). Karena itu ditemukan dua bug dan sudah diperbaiki:
+  shell (`HomeShell` di `app.dart`, `VenueShell` di `venue_shell.dart`) tidak
+  lagi memakai `IndexedStack` yang mengganti child saat runtime — pola baru
+  `Stack(fit: StackFit.expand)` + child permanen dibungkus `Offstage` +
+  `RepaintBoundary`, karena Flutter 3.41 mogok menyematkan semantik saat tree
+  child `IndexedStack` diganti. `GhostButton` (core/widgets.dart) diberi
+  `mainAxisSize: MainAxisSize.min` supaya bisa dipakai sebagai child tidak-flex
+  di `Row` (kasus: tombol `Tambah` dan `Ganti foto`); header lapangan kini
+  mem-flex judul dengan ellipsis, jadi tak overflow di lebar sempit.
 
 
 ## Akses room
@@ -144,11 +155,12 @@ Palet desain **"Hijau"** (`DesignReference/SEBAR Mobile — Hijau.html`):
 - **Tiket** (`TicketTile`, `TicketScreen`): blok tanggal, judul, jadwal,
   kode QR besar; tab `Siap dipakai / Menunggu / Selesai`.
 - **Dock bawah datar**: 4 tujuan + pil tengah `Buat room` (pemain) /
-  `Buka slot` (venue), hijau `#04BF62` dengan teks tinta.
+  `Buka slot` (venue), hijau `#00A27D` dengan teks tinta.
 - **Skala tipografi** `T`: 12 label, 12 caption, 13 small, 14 body,
   16 h2, 24 h1, 28 display, 32 metrik. Tidak ada teks di bawah 12px.
 - **Foto lapangan dikelola venue** (`CourtPhoto` + `courtPhotosProvider`),
-  fallback hijau + ikon bila gagal muat.
+  bisa diganti dari venue: tombol `Ganti foto` di header tiap lapangan (tab
+  Jadwal) dan di sheet detail slot. Fallback hijau + ikon bila gagal muat.
 - **Teks pengguna tanpa istilah internal**: kode ledger dipetakan ke label
   manusia (`WalletEntryX.typeLabel`), pesan scan memakai kalimat biasa.
 
@@ -159,7 +171,8 @@ bila ingin persis.
 ## Pembayaran & pembatalan
 
 - Join memakai saldo dompet: dana dikunci (`HOLD`) saat join dan dikonversi
-  jadi pembayaran saat kuota penuh. Tidak ada opsi QRIS/transfer.
+  jadi pembayaran saat kuota penuh. `join(useWallet:)` menyediakan jalur
+  QRIS/transfer untuk UI berikutnya; serverannya belum ada.
 - Pembatalan: batal **≥ 6 jam** refund penuh, **< 6 jam** slot terkunci (tidak
   bisa keluar), tidak datang dana hangus. Aturan tampil sebelum user setuju.
 
@@ -168,4 +181,6 @@ bila ingin persis.
 - `test/money_test.dart` - T-01 split bill (ceil + surplus), T-02 denda 15% < 6 jam
 - `test/access_test.dart` - akses room, kode undangan, peran akun mitra
 - `test/screens_test.dart` - smoke semua layar di 360x740 tanpa overflow
+- `test/jadwal_smoke.dart` - smoke tab Jadwal via dock + standalone, 360x740
+  (menangkap overflow RenderFlex; lihat "Jadwal venue")
 - `test/lobby_detail_test.dart`, `test/widget_test.dart` - render dasar

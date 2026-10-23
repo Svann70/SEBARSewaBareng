@@ -18,7 +18,6 @@ class VenueShell extends StatefulWidget {
 
 class _VenueShellState extends State<VenueShell> {
   int _index = 0;
-  final _visited = <int>{0};
 
   static const _pages = [
     _VenueHome(),
@@ -32,13 +31,16 @@ class _VenueShellState extends State<VenueShell> {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: IndexedStack(
-          index: _index,
+        child: Stack(
+          fit: StackFit.expand,
           children: [
+            // Struktur anak tetap (bug Flutter 3.41 semantics parentDataDirty
+            // saat tukar tipe/jumlah child runtime); toggle via Offstage.
             for (var i = 0; i < _pages.length; i++)
-              _visited.contains(i)
-                  ? RepaintBoundary(child: _pages[i])
-                  : const SizedBox.shrink(),
+              Offstage(
+                offstage: _index != i,
+                child: RepaintBoundary(child: _pages[i]),
+              ),
           ],
         ),
       ),
@@ -47,10 +49,7 @@ class _VenueShellState extends State<VenueShell> {
         items: DockNav.venueDock,
         centerIcon: Icons.add,
         centerLabel: 'Buka slot',
-        onSelect: (i) => setState(() {
-          _index = i;
-          _visited.add(i);
-        }),
+        onSelect: (i) => setState(() => _index = i),
         onCreate: () => showAddSlotSheet(context),
       ),
     );
