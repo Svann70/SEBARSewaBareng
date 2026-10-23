@@ -52,16 +52,6 @@ extension AccountRoleX on AccountRole {
   };
 }
 
-/// Satu form login untuk pemain dan venue: peran ditentukan dari akun.
-/// ponytail: selama belum ada API, domain email dijadikan penentu
-/// (`@venue.sebar.app` = akun mitra); ganti ke peran dari server saat ada.
-AccountRole roleForEmail(String email) {
-  final value = email.trim().toLowerCase();
-  return value.startsWith('admin') || value.endsWith('@venue.sebar.app')
-      ? AccountRole.venue
-      : AccountRole.player;
-}
-
 /// Profil pengguna yang sedang login (dari server).
 class SessionUser {
   const SessionUser({

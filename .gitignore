@@ -16,6 +16,7 @@ revisi.md
 *.jks
 *.keystore
 key.properties
+env.json 
 
 # --- OS / editor ---
 .DS_Store

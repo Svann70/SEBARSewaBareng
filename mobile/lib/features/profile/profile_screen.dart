@@ -68,29 +68,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const SizedBox(height: 12),
           SurfaceCard(
             radius: 24,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Mode mitra', style: T.h3),
-                const SizedBox(height: 4),
-                const Text(
-                  'Kelola jadwal lapangan, scan tiket, dan pencairan lewat '
-                  'akun mitra venue.',
-                  style: T.small,
-                ),
-                const SizedBox(height: 12),
-                GhostButton(
-                  label: 'Masuk sebagai mitra',
-                  icon: Icons.storefront_outlined,
-                  height: 46,
-                  onPressed: () => context.go('/login'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          SurfaceCard(
-            radius: 24,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
             child: Column(
               children: [
