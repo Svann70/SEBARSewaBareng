@@ -23,7 +23,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _confirm = TextEditingController();
   final _venueName = TextEditingController();
   final _venueAddress = TextEditingController();
-  final _venueCity = TextEditingController(text: 'Bandung');
+  final _venueCity = TextEditingController();
+  AccountRole _role = AccountRole.player;
   String? _error;
   bool _busy = false;
 
@@ -58,7 +59,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       setState(() => _error = 'Konfirmasi password tidak sama.');
       return;
     }
-    final role = roleForEmail(email);
+    final role = _role;
     if (role == AccountRole.venue) {
       if (_venueName.text.trim().length < 3) {
         setState(() => _error = 'Nama venue minimal 3 karakter.');
@@ -120,6 +121,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               style: T.body,
             ),
             const SizedBox(height: 24),
+            const Align(alignment: Alignment.centerLeft, child: Text('Daftar sebagai', style: T.small)),
+            const SizedBox(height: 8),
+            Segmented<AccountRole>(
+              options: AccountRole.values,
+              value: _role,
+              labelOf: (role) => role == AccountRole.player ? 'Pemain' : 'Mitra venue',
+              onChanged: (role) => setState(() => _role = role),
+            ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(_role.hint, style: T.caption),
+            ),
+            const SizedBox(height: 14),
             LabeledField(
               label: 'Nama lengkap',
               controller: _name,
@@ -135,43 +150,32 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               keyboard: TextInputType.emailAddress,
               prefixIcon: Icons.alternate_email,
             ),
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: _email,
-              builder: (context, value, _) {
-                if (roleForEmail(value.text) != AccountRole.venue) {
-                  return const SizedBox.shrink();
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 14),
-                    LabeledField(
-                      label: 'Nama venue',
-                      controller: _venueName,
-                      hint: 'Contoh: GOR C-Tra',
-                      prefixIcon: Icons.storefront_outlined,
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                    const SizedBox(height: 14),
-                    LabeledField(
-                      label: 'Alamat venue',
-                      controller: _venueAddress,
-                      hint: 'Jalan dan nomor',
-                      prefixIcon: Icons.location_on_outlined,
-                      textCapitalization: TextCapitalization.sentences,
-                    ),
-                    const SizedBox(height: 14),
-                    LabeledField(
-                      label: 'Kota',
-                      controller: _venueCity,
-                      hint: 'Bandung',
-                      prefixIcon: Icons.place_outlined,
-                      textCapitalization: TextCapitalization.words,
-                    ),
-                  ],
-                );
-              },
-            ),
+            if (_role == AccountRole.venue) ...[
+              const SizedBox(height: 14),
+              LabeledField(
+                label: 'Nama venue',
+                controller: _venueName,
+                hint: 'Contoh: GOR C-Tra',
+                prefixIcon: Icons.storefront_outlined,
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 14),
+              LabeledField(
+                label: 'Alamat venue',
+                controller: _venueAddress,
+                hint: 'Jalan dan nomor',
+                prefixIcon: Icons.location_on_outlined,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 14),
+              LabeledField(
+                label: 'Kota',
+                controller: _venueCity,
+                hint: 'Contoh: Bandung',
+                prefixIcon: Icons.place_outlined,
+                textCapitalization: TextCapitalization.words,
+              ),
+            ],
             const SizedBox(height: 14),
             LabeledField(
               label: 'Password',

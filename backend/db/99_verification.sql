@@ -1,0 +1,30 @@
+-- -----------------------------------------------------------------------------
+-- SEBAR — VERIFIKASI CEPAT (opsional, jalankan manual di SQL editor)
+-- -----------------------------------------------------------------------------
+-- Run order : 8 — setelah seed (semua query dikomentari; jalankan per baris)
+-- -----------------------------------------------------------------------------
+
+-- G2 — rekonsiliasi wallet vs ledger (TOPUP live + mechanics forum):
+--   SELECT w.id, w.balance, w.held_balance, SUM(l.amount) FILTER (WHERE l.entry_type IN ('TOPUP','REFUND')) AS in_flow
+--   FROM public.wallets w JOIN public.wallet_ledger l ON l.wallet_id = w.id GROUP BY 1,2,3;
+--
+-- Anti double-booking:
+--   SELECT slot_id, count(*) FROM public.bookings GROUP BY 1 HAVING count(*) > 1;
+--
+-- Bukti performa (SDD §4.7 — isi angka nyata untuk demo):
+--   EXPLAIN (ANALYZE, BUFFERS)
+--   SELECT l.id, l.title, l.price_per_person, s.start_at
+--   FROM public.lobbies l
+--   JOIN public.court_slots s ON s.id = l.slot_id
+--   JOIN public.courts c      ON c.id = s.court_id
+--   JOIN public.venues v      ON v.id = c.venue_id
+--   WHERE l.status = 'OPEN' AND s.start_at > now()
+--     AND v.city = 'Bandung' AND l.min_reliability <= 80
+--   ORDER BY s.start_at LIMIT 20;
+--
+-- Analytics (SDD §4.8):
+--   SELECT * FROM public.vw_venue_monthly_revenue WHERE venue_id = (md5('venue-1')::uuid);
+--   SELECT * FROM public.fn_peak_hours((md5('venue-1')::uuid), now() - INTERVAL '30 days', now());
+--
+-- Trigger expire manual (SDD §15 mitigasi):
+--   SELECT public.expire_stale_lobbies();
