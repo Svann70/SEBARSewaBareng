@@ -59,12 +59,14 @@ class SessionUser {
     required this.email,
     required this.fullName,
     required this.role,
+    this.phone,
     this.reliability = 100,
   });
 
   final String id;
   final String email;
   final String fullName;
+  final String? phone;
   final AccountRole role;
   final int reliability;
 
@@ -72,6 +74,7 @@ class SessionUser {
     id: json['id'] as String? ?? '',
     email: json['email'] as String? ?? '',
     fullName: json['fullName'] as String? ?? '',
+    phone: (json['phone'] as String?)?.trim(),
     role: accountRoleFromApi(json['role'] as String?),
     reliability: _asInt(json['reliabilityScore'], 100),
   );
@@ -144,6 +147,30 @@ class AuthNotifier extends Notifier<AccountRole?> {
     await api.logout();
     ref.read(sessionProvider.notifier).set(null);
     state = null;
+  }
+
+  /// Simpan nama/telepon ke server lalu perbarui sesi lokal.
+  /// [clearPhone] true menghapus nomor telepon.
+  Future<String?> updateProfile({String? fullName, String? phone, bool clearPhone = false}) async {
+    try {
+      await api.updateMe(fullName: fullName, phone: phone, clearPhone: clearPhone);
+      ref
+          .read(sessionProvider.notifier)
+          .set(SessionUser.fromJson(api.user ?? const {}));
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  /// Ubah password. Sukses = semua sesi dicabut server, pemanggil wajib signOut.
+  Future<String?> changePassword({required String current, required String next}) async {
+    try {
+      await api.changePassword(current: current, next: next);
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
   }
 
   /// Muat data awal setelah login. Kegagalan satu bagian tidak membatalkan

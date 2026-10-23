@@ -22,7 +22,7 @@ void main() {
         stack: details.stack,
         context: ErrorDescription('(diplester untuk test)'),
       ));
-    };
+    }; 
 
     await tester.pumpWidget(
       ProviderScope(

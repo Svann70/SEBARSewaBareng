@@ -113,6 +113,30 @@ class ApiClient {
     }
   }
 
+  // ── Profil ──────────────────────────────────────────────────────────────
+
+  /// PATCH /me: field yang tidak dikirim tidak berubah; [clearPhone] menghapus nomor.
+  Future<Map<String, dynamic>> updateMe({String? fullName, String? phone, bool clearPhone = false}) async {
+    final body = <String, dynamic>{
+      'fullName': ?fullName,
+      if (clearPhone) 'phone': null,
+      if (phone != null && phone.isNotEmpty) 'phone': phone,
+    };
+    final data = _asMap(await _send('PATCH', '/me', body: body));
+    _applyUser(data);
+    return data;
+  }
+
+  /// POST /me/password: sukses memicu 204, lalu seluruh sesi dicabut server —
+  /// pemanggil wajib signOut dan kembali ke layar masuk.
+  Future<void> changePassword({required String current, required String next}) =>
+      _send('POST', '/me/password', body: {'currentPassword': current, 'newPassword': next});
+
+  void _applyUser(Map<String, dynamic> data) {
+    user = data;
+    userId = data['id'] as String?;
+  }
+
   void _applySession(Map<String, dynamic> data) {
     _accessToken = data['accessToken'] as String?;
     _refreshToken = data['refreshToken'] as String?;

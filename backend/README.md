@@ -103,6 +103,8 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | POST | `/auth/refresh` | - | refreshToken | 200 token baru (refresh token lama tidak berlaku lagi) | 401 |
 | POST | `/auth/logout` | - | refreshToken | 204 | |
 | GET | `/me` | semua | - | 200 profil + skor | 401 |
+| PATCH | `/me` | semua | fullName?, phone? (null = hapus; minimal satu field) | 200 profil baru | 401, 409 nomor telepon dipakai, 422 |
+| POST | `/me/password` | semua | currentPassword, newPassword (≥8, ≠ lama) | 204 (semua refresh token dicabut, semua perangkat wajib login ulang) | 401 password saat ini salah, 422 |
 | GET | `/me/wallet` | semua | - | 200 `{balance, held, available}` | |
 | POST | `/me/wallet/topup` | semua | amount (10.000–10.000.000), header `Idempotency-Key` | 201 entri ledger (200 bila key diulang) | 422, 422 `IDEMPOTENCY_KEY_REUSED`, 403 bila sandbox mati |
 | GET | `/me/wallet/ledger` | semua | page | 200 `{items, page}` | |
