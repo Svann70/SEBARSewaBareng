@@ -11,6 +11,7 @@ import 'features/community/community_screen.dart';
 import 'features/create/create_lobby_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/lobby/lobby_detail_screen.dart';
+import 'features/profile/edit_profile_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/rooms/rooms_screen.dart';
 import 'features/venue/venue_shell.dart';
@@ -24,6 +25,10 @@ final _router = GoRouter(
     GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
     GoRoute(path: '/home', builder: (_, _) => const HomeShell()),
     GoRoute(path: '/rooms', builder: (_, _) => const RoomsScreen()),
+    GoRoute(
+      path: '/profile/edit',
+      builder: (_, _) => const EditProfileScreen(),
+    ),
     GoRoute(
       path: '/lobby/:id',
       builder: (_, s) => LobbyDetailScreen(id: s.pathParameters['id']!),
