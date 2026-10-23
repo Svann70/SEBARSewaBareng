@@ -5,6 +5,8 @@ import * as controller from './venue-admin.controller.js';
 export const venueAdminRoutes = Router();
 
 venueAdminRoutes.get('/venues', controller.listVenues);
+venueAdminRoutes.post('/courts', controller.createCourt);
+venueAdminRoutes.patch('/courts/:id', controller.updateCourt);
 venueAdminRoutes.get('/slots', controller.listSlots);
 venueAdminRoutes.post('/slots', controller.createSlot);
 venueAdminRoutes.patch('/slots/:id', controller.updateSlot);

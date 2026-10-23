@@ -1,9 +1,35 @@
 import { z } from 'zod';
+import { SPORTS } from '../../lib/sql.js';
 
 const price = z.number().int().min(1_000).max(100_000_000);
+const capacity = z.number().int().min(2).max(30);
+const name = z.string().trim().min(2).max(60);
 
 export const idSchema = z.object({ id: z.uuid() });
 export const dateSchema = z.object({ date: z.iso.date() });
+
+// venueId opsional: tanpa itu, slot semua venue milik akun ini dikembalikan.
+export const slotsQuerySchema = z.object({
+  date: z.iso.date(),
+  venueId: z.uuid().optional(),
+});
+
+export const createCourtSchema = z.object({
+  venueId: z.uuid(),
+  name,
+  sport: z.enum(SPORTS),
+  pricePerHour: price,
+  capacity,
+});
+
+export const patchCourtSchema = z
+  .object({
+    name: name.optional(),
+    pricePerHour: price.optional(),
+    capacity: capacity.optional(),
+    status: z.enum(['ACTIVE', 'MAINTENANCE']).optional(),
+  })
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'Isi minimal satu field' });
 
 export const createSlotSchema = z
   .object({

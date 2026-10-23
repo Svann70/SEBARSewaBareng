@@ -147,15 +147,15 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
             children: [
               Pill(
                 'Pendapatan bulan ini',
-                color: Colors.white,
-                background: Colors.black.withValues(alpha: 0.2),
+                color: C.ink,
+                background: Colors.white.withValues(alpha: 0.5),
               ),
               const SizedBox(height: 10),
               Text(
                 rupiah(venueSummary.revenue),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: T.h1.copyWith(color: Colors.white),
+                style: T.h1,
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -439,17 +439,17 @@ class _HeroMeta extends StatelessWidget {
           value,
           style: const TextStyle(
             fontSize: 13,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            color: C.ink,
           ),
         ),
         const SizedBox(width: 4),
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w500,
-            color: Colors.white,
+            color: C.ink,
           ),
         ),
       ],
@@ -523,6 +523,8 @@ class _VenueAccount extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Ikut berubah saat profil venue dimuat dari server.
+    ref.watch(venueSlotsProvider);
     return ListView(
       padding: kScreenPad,
       children: [
@@ -539,24 +541,24 @@ class _VenueAccount extends ConsumerWidget {
             children: [
               Pill(
                 'Saldo pencairan',
-                color: Colors.white,
-                background: Colors.black.withValues(alpha: 0.2),
+                color: C.amber,
+                background: Colors.white.withValues(alpha: 0.6),
               ),
               const SizedBox(height: 9),
               Text(
                 rupiah(venueProfile.payout),
                 style: const TextStyle(
                   fontSize: 24,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: -1,
                   height: 1,
-                  color: Colors.white,
+                  color: C.ink,
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
+              const Text(
                 'Dicairkan tiap Senin · fee 5%',
-                style: TextStyle(fontSize: 12, color: Colors.white),
+                style: TextStyle(fontSize: 12, color: C.amber),
               ),
             ],
           ),
@@ -624,9 +626,9 @@ class _VenueAccount extends ConsumerWidget {
           label: 'Keluar ke akun pemain',
           icon: Icons.swap_horiz,
           color: C.primary,
-          onPressed: () {
-            ref.read(authProvider.notifier).logout();
-            context.go('/login');
+          onPressed: () async {
+            await ref.read(authProvider.notifier).signOut();
+            if (context.mounted) context.go('/login');
           },
         ),
       ],

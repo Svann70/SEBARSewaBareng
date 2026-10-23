@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^3.4.3
   go_router: ^18.1.0
+  http: ^1.2.2
   qr_flutter: ^4.1.0
 
 dev_dependencies:

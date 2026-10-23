@@ -1,7 +1,9 @@
 # SEBAR API (v1)
 
 Node.js 22 + Express 5, plain JavaScript (ESM). Database: Supabase Postgres via `pg` (raw SQL).
-Belum dihubungkan ke `mobile/`.
+Sudah dihubungkan ke `mobile/` (klien HTTP `mobile/lib/data/api.dart`, alamat
+lewat `--dart-define=SEBAR_API_URL`, default `http://10.0.2.2:3000` di
+emulator Android / `http://localhost:3000` di web-desktop).
 
 Aturan uang dan kuota dijalankan **di database Supabase** (trigger + function PL/pgSQL, SDD §4.6).
 Backend ini lapisan tipis: validasi input, cek kepemilikan, kunci baris, lalu memicu trigger/function.
@@ -114,9 +116,14 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | DELETE | `/lobbies/:id/members/me` | semua | - | 200 `{released}` | 409 sudah confirm / host, 410 |
 | DELETE | `/lobbies/:id` | host | - | 200 `{refundedMembers}` | 403, 409, 410 lewat deadline |
 | GET | `/venue/venues` | VENUE_ADMIN | - | 200 venue + courts milik sendiri | 403 |
-| GET | `/venue/slots` | VENUE_ADMIN | date | 200 `{items}` | 403 |
+| POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sport (`BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`), pricePerHour, capacity (2–30) | 201 court | 404 venue bukan milik |
+| PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, pricePerHour?, capacity?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik |
+| GET | `/venue/slots` | VENUE_ADMIN | date, venueId? | 200 `{items}` | 403 |
 | POST | `/venue/slots` | VENUE_ADMIN | courtId, startAt, endAt, price | 201 slot | 409 bentrok, 404 bukan milik |
 | PATCH | `/venue/slots/:id` | VENUE_ADMIN | status? (`OPEN`/`BLOCKED`), price? | 200 slot | 409 sudah ada lobby/booking |
+
+Rencana perubahan DB + endpoint untuk desain baru ada di `DESIGN_CHANGES.md`.
+Khusus alur **Buat room** (wizard 3 langkah) ada di `CREATE_ROOM_CHANGES.md`.
 
 Respons token (register, login, refresh):
 

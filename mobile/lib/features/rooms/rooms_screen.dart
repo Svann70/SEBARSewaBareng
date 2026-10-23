@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -47,6 +48,7 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
         bottom: false,
         child: ListView(
           padding: kScreenPadTop.copyWith(bottom: 32),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           children: [
             const SizedBox(height: 4),
             const RoundBackHeader(title: 'Semua room'),
@@ -99,22 +101,22 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
               for (final entry in groups.entries) ...[
                 SectionHeader(entry.key),
                 const SizedBox(height: 8),
-                for (var i = 0; i < entry.value.length; i++)
+                for (final lobby in entry.value)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: RankRow(
-                      rank: i + 1,
-                      title: entry.value[i].title,
-                      subtitle:
-                          '${entry.value[i].venue} · '
-                          '${formatTime(entry.value[i].start)}–'
-                          '${formatTime(entry.value[i].end)}',
-                      value: entry.value[i].isFull
-                          ? 'Penuh'
-                          : '${entry.value[i].remaining} slot',
-                      background: _tint(i),
-                      avatars: [for (final m in entry.value[i].members) m.name],
-                      onTap: () => context.push('/lobby/${entry.value[i].id}'),
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: RoomCard(
+                      sport: lobby.sport.label,
+                      title: lobby.title,
+                      when:
+                          '${formatDate(lobby.start)} · '
+                          '${formatTime(lobby.start)}–${formatTime(lobby.end)}',
+                      place: '${lobby.venue} · ${lobby.court}',
+                      pricePerPerson: lobby.pricePerPerson,
+                      members: [for (final m in lobby.members) m.name],
+                      joined: lobby.joined,
+                      quota: lobby.quota,
+                      access: lobby.access.label.toUpperCase(),
+                      onTap: () => context.push('/lobby/${lobby.id}'),
                     ),
                   ),
               ],
@@ -134,13 +136,6 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
       _ => formatLongDate(start),
     };
   }
-
-  static Color _tint(int i) => switch (i % 4) {
-    0 => C.primarySoft,
-    1 => C.surface,
-    2 => C.amberSoft,
-    _ => C.surfaceAlt,
-  };
 
   Future<void> _pickCity(
     BuildContext context,
@@ -216,24 +211,30 @@ class _SportChips extends StatelessWidget {
           final (label, sport) = items[i];
           final active = sport == selected;
           return Material(
-            color: active ? C.primary : C.surface,
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(999),
             child: InkWell(
               borderRadius: BorderRadius.circular(999),
-              onTap: () => onSelect(sport),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                onSelect(sport);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOut,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
+                  color: active ? C.primaryFill : C.surface,
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: active ? C.primary : C.line),
+                  border: Border.all(color: active ? C.primaryFill : C.line),
                 ),
                 child: Text(
                   label,
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: active ? Colors.white : C.ink,
+                    fontWeight: FontWeight.w600,
+                    color: active ? C.ink : C.muted,
                   ),
                 ),
               ),

@@ -30,6 +30,10 @@ final _router = GoRouter(
     ),
     GoRoute(path: '/create', builder: (_, _) => const CreateLobbyScreen()),
     GoRoute(
+      path: '/tickets',
+      builder: (_, _) => const Scaffold(body: TicketsScreen()),
+    ),
+    GoRoute(
       path: '/ticket/:id',
       builder: (_, s) => TicketScreen(id: s.pathParameters['id']!),
     ),
@@ -116,6 +120,7 @@ class RoundBackHeader extends StatelessWidget {
         children: [
           CircleIconButton(
             icon: Icons.arrow_back,
+            tooltip: 'Kembali',
             onTap: () => context.canPop() ? context.pop() : context.go('/home'),
           ),
           const SizedBox(width: 12),
@@ -136,6 +141,7 @@ class CircleIconButton extends StatelessWidget {
     required this.icon,
     this.onTap,
     this.badge = false,
+    this.tooltip,
   });
 
   final IconData icon;
@@ -144,9 +150,12 @@ class CircleIconButton extends StatelessWidget {
   /// Titik notifikasi kecil di sudut kanan atas.
   final bool badge;
 
+  /// Label untuk layar pembaca; ikon saja tidak terbaca.
+  final String? tooltip;
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    final button = SizedBox(
       width: 42,
       height: 42,
       child: Stack(
@@ -182,5 +191,6 @@ class CircleIconButton extends StatelessWidget {
         ],
       ),
     );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
