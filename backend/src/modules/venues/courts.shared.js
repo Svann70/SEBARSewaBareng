@@ -1,10 +1,10 @@
 // Court JSON shared by the player catalogue and the venue admin module. `c` is the courts alias.
-// Times are 'HH:MM' (close may be '24:00'); weekendPricePerHour falls back to the weekday price.
+// Times are 'HH:MM' (close may be '24:00'); priceWeekend null = same as the weekday price.
 export const courtJson = (c) => `json_build_object(
   'id', ${c}.id, 'name', ${c}.name, 'status', ${c}.status,
   'sport', ${c}.sport_type, 'capacity', ${c}.capacity,
   'pricePerHour', ${c}.price_per_hour,
-  'weekendPricePerHour', COALESCE(${c}.weekend_price_per_hour, ${c}.price_per_hour),
+  'priceWeekend', ${c}.price_weekend,
   'openTime', to_char(${c}.open_time, 'HH24:MI'), 'closeTime', to_char(${c}.close_time, 'HH24:MI'),
   'sports', (SELECT COALESCE(json_agg(json_build_object('sport', cs.sport_type, 'capacity', cs.capacity)
                                       ORDER BY cs.sport_type), '[]'::json)

@@ -47,26 +47,26 @@ await tx(async (c) => {
   ).rows[0];
 
   const courts = [
-    ['Badminton A', 'BADMINTON', 100_000, 8],
-    ['Badminton B', 'BADMINTON', 100_000, 8],
-    ['Futsal 1', 'FUTSAL', 250_000, 14],
+    ['Badminton A', 'BADMINTON', 100_000, 125_000, 8],
+    ['Badminton B', 'BADMINTON', 100_000, 125_000, 8],
+    ['Futsal 1', 'FUTSAL', 250_000, 300_000, 14],
   ];
-  for (const [name, sport, price, capacity] of courts) {
+  for (const [name, sport, price, weekend, capacity] of courts) {
     const court = (
       await c.query(
-        `INSERT INTO courts (venue_id, name, sport_type, price_per_hour, capacity) VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (venue_id, name) DO UPDATE SET price_per_hour = EXCLUDED.price_per_hour RETURNING id`,
-        [venue.id, name, sport, price, capacity],
+        `INSERT INTO courts (venue_id, name, sport_type, price_per_hour, price_weekend, capacity) VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (venue_id, name) DO UPDATE SET price_per_hour = EXCLUDED.price_per_hour, price_weekend = EXCLUDED.price_weekend RETURNING id`,
+        [venue.id, name, sport, price, weekend, capacity],
       )
     ).rows[0];
     // Two-hour slots at 08:00, 16:00 and 20:00 WIB for the next 7 days.
     await c.query(
       `INSERT INTO court_slots (court_id, start_at, end_at, price)
-       SELECT $1, t, t + interval '2 hours', $2
+       SELECT $1, t, t + interval '2 hours', (CASE WHEN extract(isodow FROM (t AT TIME ZONE 'Asia/Jakarta')) >= 6 THEN $3::numeric ELSE $2::numeric END)
          FROM generate_series(1, 7) AS d, unnest(ARRAY[8, 16, 20]) AS h,
               LATERAL (SELECT (((now() AT TIME ZONE 'Asia/Jakarta')::date + d) + make_interval(hours => h)) AT TIME ZONE 'Asia/Jakarta' AS t) x
        ON CONFLICT (court_id, start_at) WHERE NOT released DO NOTHING`,
-      [court.id, price * 2],
+      [court.id, price * 2, weekend * 2],
     );
   }
 });

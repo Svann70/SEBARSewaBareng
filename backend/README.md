@@ -37,8 +37,9 @@ Supabase:
 
 Sekali saja, berurutan, di Supabase SQL Editor:
 1. `db/supabase/001_refresh_tokens.sql` (tabel `refresh_tokens`). Tanpa ini, register/login gagal.
-2. `db/supabase/002_court_setup.sql` (jam buka–tutup, harga weekend, lapangan serbaguna `court_sports`,
-   olahraga Basket/Tenis/Padel, kolom `court_slots.released`). Tanpa ini, katalog venue, buat room,
+2. `db/supabase/002_court_price_weekend.sql` (kolom `courts.price_weekend`, harga Sabtu–Minggu).
+3. `db/supabase/003_court_setup.sql` (jam buka–tutup, lapangan serbaguna `court_sports`, olahraga
+   Basket/Tenis/Padel, kolom `court_slots.released`). Tanpa 002 + 003, katalog venue, buat room,
    dan `npm run seed` gagal.
 
 Setup lapangan sekali di awal: semua jam di dalam jam buka bisa disewa tanpa pemilik membuka slot.
@@ -128,8 +129,8 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | DELETE | `/lobbies/:id` | host | - | 200 `{refundedMembers}` | 403, 409, 410 lewat deadline |
 | GET | `/venue/venues` | VENUE_ADMIN | - | 200 venue + courts milik sendiri | 403 |
 | POST | `/venue/venues` | VENUE_ADMIN | name (3–120), address (5–300), city (2–60), description? | 201 venue (untuk akun yang belum punya venue) | 403, 422 |
-| POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sports `[{sport, capacity}]` (atau sport + capacity), pricePerHour (weekday), weekendPricePerHour?, openTime? (`HH:00`, default 06:00), closeTime? (`HH:00`, ≤ 24:00, default 22:00). sport: `BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`/`BASKETBALL`/`TENNIS`/`PADEL` | 201 court | 404 venue bukan milik, 409 nama dobel, 422 |
-| PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, sports? (ganti semua), pricePerHour?, weekendPricePerHour?, capacity?, openTime?, closeTime?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik, 422 jam tutup ≤ jam buka |
+| POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sports `[{sport, capacity}]` (atau sport + capacity), pricePerHour (weekday), priceWeekend?, openTime? (`HH:00`, default 06:00), closeTime? (`HH:00`, ≤ 24:00, default 22:00). sport: `BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`/`BASKETBALL`/`TENNIS`/`PADEL` | 201 court | 404 venue bukan milik, 409 nama dobel, 422 |
+| PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, sports? (ganti semua), pricePerHour?, priceWeekend?, capacity?, openTime?, closeTime?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik, 422 jam tutup ≤ jam buka |
 | GET | `/venue/slots` | VENUE_ADMIN | date, venueId? | 200 `{items}` | 403 |
 | POST | `/venue/slots` | VENUE_ADMIN | courtId, startAt, endAt, price, status? (`OPEN`/`BLOCKED`; `BLOCKED` = tutup jam itu) | 201 slot | 409 bentrok, 404 bukan milik |
 | PATCH | `/venue/slots/:id` | VENUE_ADMIN | status? (`OPEN`/`BLOCKED`), price? | 200 slot | 409 sudah ada lobby/booking |

@@ -80,7 +80,7 @@ export async function create(hostId, input) {
 
 // Hourly rate of court `c` for a start time `$4` (timestamptz): weekend price on Saturday/Sunday WIB.
 const RATE_SQL = `(CASE WHEN extract(isodow FROM ($4::timestamptz AT TIME ZONE 'Asia/Jakarta')) >= 6
-                        THEN COALESCE(c.weekend_price_per_hour, c.price_per_hour) ELSE c.price_per_hour END)`;
+                        THEN COALESCE(c.price_weekend, c.price_per_hour) ELSE c.price_per_hour END)`;
 
 const MAX_DAYS_AHEAD = 60;
 

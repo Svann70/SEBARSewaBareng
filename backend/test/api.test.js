@@ -80,7 +80,7 @@ async function venueWithCourt() {
     assert.equal(r.status, 201, JSON.stringify(r.body));
     return r.body;
   };
-  return { admin, courtId: c.rows[0].id, slot };
+  return { admin, venueId: v.rows[0].id, courtId: c.rows[0].id, slot };
 }
 
 async function createLobby(host, slotId, quota, extra = {}) {
@@ -355,6 +355,14 @@ describe('venue slots vs lobbies', { skip }, () => {
     assert.ok(await listed(`date=${wibDate}&city=bandung`));
     const dayAfter = new Date(Date.parse(wibDate) + 86400_000).toISOString().slice(0, 10);
     assert.ok(!(await listed(`date=${dayAfter}`)));
+
+    // POV venue: jadwal menampilkan siapa yang booking + jumlah pemain.
+    const venueSlots = await api('GET', `/venue/slots?date=${wibDate}`, { token: v.admin.token });
+    const row = venueSlots.body.items.find((s) => s.id === slot.id);
+    assert.ok(row.hostName, 'host name present');
+    assert.equal(row.joined, 1);
+    assert.equal(row.quota, 4);
+    assert.equal((await api('GET', `/venues/${v.venueId}/slots?date=${wibDate}`, { token: p.token })).body.items[0].hostName, undefined);
   });
 });
 
@@ -558,7 +566,7 @@ async function setupCourt(body = {}) {
       name: 'Serbaguna',
       sports: [{ sport: 'FUTSAL', capacity: 10 }, { sport: 'BASKETBALL', capacity: 10 }, { sport: 'TENNIS', capacity: 4 }],
       pricePerHour: 100_000,
-      weekendPricePerHour: 150_000,
+      priceWeekend: 150_000,
       openTime: '08:00',
       closeTime: '22:00',
       ...body,
@@ -576,7 +584,7 @@ describe('court setup (one-time, no manual slots)', { skip }, () => {
     const { admin, venueId, court } = await setupCourt();
     assert.deepEqual(court.sports.map((s) => [s.sport, s.capacity]).sort(), [['BASKETBALL', 10], ['FUTSAL', 10], ['TENNIS', 4]]);
     assert.equal(court.pricePerHour, 100_000);
-    assert.equal(court.weekendPricePerHour, 150_000);
+    assert.equal(court.priceWeekend, 150_000);
     assert.equal(court.openTime, '08:00');
     assert.equal(court.closeTime, '22:00');
 
@@ -587,7 +595,7 @@ describe('court setup (one-time, no manual slots)', { skip }, () => {
     const legacy = await post({ name: 'Lap B', sport: 'BADMINTON', capacity: 8, closeTime: '24:00' });
     assert.equal(legacy.status, 201, JSON.stringify(legacy.body));
     assert.deepEqual(legacy.body.sports, [{ sport: 'BADMINTON', capacity: 8 }]);
-    assert.equal(legacy.body.weekendPricePerHour, 100_000, 'no weekend price = weekday price');
+    assert.equal(legacy.body.priceWeekend, null, 'no weekend price = weekday price');
     assert.equal(legacy.body.closeTime, '24:00');
     assert.equal((await post({ name: 'Lap B', sport: 'BADMINTON', capacity: 8 })).status, 409, 'duplicate court name');
 
@@ -740,9 +748,9 @@ describe('court setup edge cases (review fixes)', { skip }, () => {
     assert.equal(late.status, 201);
     assert.equal(late.body.priceTotal, 150_000, 'Saturday 23:00 WIB = weekend');
 
-    const cleared = await api('PATCH', `/venue/courts/${court.id}`, { token: admin.token, body: { weekendPricePerHour: null } });
+    const cleared = await api('PATCH', `/venue/courts/${court.id}`, { token: admin.token, body: { priceWeekend: null } });
     assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
-    assert.equal(cleared.body.weekendPricePerHour, 100_000);
+    assert.equal(cleared.body.priceWeekend, null);
   });
 
   test('rooms cannot be made beyond the booking horizon', async () => {

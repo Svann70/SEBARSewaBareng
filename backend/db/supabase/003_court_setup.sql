@@ -1,5 +1,6 @@
--- 002_court_setup.sql — setup lapangan sekali di awal (jalankan sekali di Supabase SQL Editor).
--- Pemilik mengisi jam buka–tutup, harga weekday/weekend, dan olahraga + kapasitas per lapangan;
+-- 003_court_setup.sql — setup lapangan sekali di awal (jalankan sekali di Supabase SQL Editor,
+-- setelah 002_court_price_weekend.sql).
+-- Pemilik mengisi jam buka–tutup dan olahraga + kapasitas per lapangan (harga weekend = 002);
 -- jam di dalam jam buka otomatis bisa disewa (slot dibuat saat pemain membuat room).
 -- Aditif dan aman diulang: tidak ada kolom/data yang dihapus.
 
@@ -8,10 +9,8 @@ ALTER TYPE public.sport_type ADD VALUE IF NOT EXISTS 'BASKETBALL';
 ALTER TYPE public.sport_type ADD VALUE IF NOT EXISTS 'TENNIS';
 ALTER TYPE public.sport_type ADD VALUE IF NOT EXISTS 'PADEL';
 
--- Harga weekend (NULL = sama dengan price_per_hour) dan jam buka–tutup harian.
--- Lapangan lama otomatis 06:00–22:00. close_time boleh '24:00' (tutup tengah malam).
+-- Jam buka–tutup harian. Lapangan lama otomatis 06:00–22:00. close_time boleh '24:00' (tutup tengah malam).
 ALTER TABLE public.courts
-  ADD COLUMN IF NOT EXISTS weekend_price_per_hour numeric(12,2) CHECK (weekend_price_per_hour > 0),
   ADD COLUMN IF NOT EXISTS open_time  time NOT NULL DEFAULT '06:00',
   ADD COLUMN IF NOT EXISTS close_time time NOT NULL DEFAULT '22:00';
 ALTER TABLE public.courts DROP CONSTRAINT IF EXISTS courts_hours_check;

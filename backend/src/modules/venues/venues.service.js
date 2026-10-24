@@ -69,7 +69,7 @@ export async function availability(venueId, date) {
         else if (start.getTime() <= cutoff) status = 'PAST';
         hours.push({ start: start.toISOString(), hour: h, status });
       }
-      return { ...court, rate: weekend ? court.weekendPricePerHour : court.pricePerHour, hours };
+      return { ...court, rate: weekend ? (court.priceWeekend ?? court.pricePerHour) : court.pricePerHour, hours };
     }),
   };
 }

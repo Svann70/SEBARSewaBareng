@@ -46,7 +46,7 @@ export const createCourtSchema = z
     sport: z.enum(SPORTS).optional(),
     capacity: capacity.optional(),
     pricePerHour: price,
-    weekendPricePerHour: price.optional(),
+    priceWeekend: price.optional(),
     openTime: openTime.default('06:00'),
     closeTime: closeTime.default('22:00'),
   })
@@ -59,7 +59,7 @@ export const patchCourtSchema = z
     name: name.optional(),
     sports: sports.optional(),
     pricePerHour: price.optional(),
-    weekendPricePerHour: price.nullable().optional(),
+    priceWeekend: price.nullable().optional(),
     capacity: capacity.optional(),
     openTime: openTime.optional(),
     closeTime: closeTime.optional(),

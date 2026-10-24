@@ -52,16 +52,16 @@ async function replaceSports(c, courtId, sports) {
 // One-time setup: price (weekday/weekend), opening hours and sports. Every hour inside the opening
 // hours can then be rented without opening slots by hand. The first sport is the court's main sport
 // (courts.sport_type/capacity), kept for views and older app builds.
-export async function createCourt(ownerId, { venueId, name, sports, pricePerHour, weekendPricePerHour, openTime, closeTime }) {
+export async function createCourt(ownerId, { venueId, name, sports, pricePerHour, priceWeekend, openTime, closeTime }) {
   return tx(async (c) => {
     const owned = await c.query('SELECT id FROM venues WHERE id = $1 AND owner_id = $2', [venueId, ownerId]);
     if (!owned.rows[0]) throw new AppError(404, 'NOT_FOUND', 'Venue tidak ditemukan.');
     let id;
     try {
       const { rows } = await c.query(
-        `INSERT INTO courts (venue_id, name, sport_type, capacity, price_per_hour, weekend_price_per_hour, open_time, close_time)
+        `INSERT INTO courts (venue_id, name, sport_type, capacity, price_per_hour, price_weekend, open_time, close_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-        [venueId, name, sports[0].sport, sports[0].capacity, pricePerHour, weekendPricePerHour ?? null, openTime, closeTime],
+        [venueId, name, sports[0].sport, sports[0].capacity, pricePerHour, priceWeekend ?? null, openTime, closeTime],
       );
       id = rows[0].id;
     } catch (err) {
@@ -74,14 +74,14 @@ export async function createCourt(ownerId, { venueId, name, sports, pricePerHour
 }
 
 export async function updateCourt(ownerId, courtId, patch) {
-  const { name, sports, pricePerHour, weekendPricePerHour, capacity, openTime, closeTime, status } = patch;
+  const { name, sports, pricePerHour, priceWeekend, capacity, openTime, closeTime, status } = patch;
   return tx(async (c) => {
     let found;
     try {
       found = await c.query(
         `UPDATE courts c SET name = COALESCE($3, c.name),
                 price_per_hour = COALESCE($4::numeric, c.price_per_hour),
-                weekend_price_per_hour = CASE WHEN $11 THEN $5::numeric ELSE c.weekend_price_per_hour END,
+                price_weekend = CASE WHEN $11 THEN $5::numeric ELSE c.price_weekend END,
                 sport_type = COALESCE($6::sport_type, c.sport_type),
                 capacity = COALESCE($7::smallint, c.capacity),
                 open_time = COALESCE($8::time, c.open_time),
@@ -90,10 +90,10 @@ export async function updateCourt(ownerId, courtId, patch) {
            FROM venues v
           WHERE c.venue_id = v.id AND c.id = $1 AND v.owner_id = $2
           RETURNING c.id, c.sport_type`,
-        [courtId, ownerId, name ?? null, pricePerHour ?? null, weekendPricePerHour ?? null,
+        [courtId, ownerId, name ?? null, pricePerHour ?? null, priceWeekend ?? null,
           sports?.[0].sport ?? null, sports?.[0].capacity ?? capacity ?? null, openTime ?? null, closeTime ?? null, status ?? null,
           // null clears the weekend price (= weekday price); undefined keeps it.
-          weekendPricePerHour !== undefined],
+          priceWeekend !== undefined],
       );
     } catch (err) {
       if (err.code === '23514' && err.constraint === 'courts_hours_check') {
