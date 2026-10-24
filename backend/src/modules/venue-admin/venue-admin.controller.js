@@ -4,6 +4,7 @@ import {
   createSlotSchema,
   createVenueSchema,
   patchVenueSchema,
+  photoParamsSchema,
   idSchema,
   patchCourtSchema,
   patchSlotSchema,
@@ -31,6 +32,17 @@ export async function createCourt(req, res) {
 export async function updateCourt(req, res) {
   const { id } = idSchema.parse(req.params);
   res.json(await service.updateCourt(req.user.id, id, patchCourtSchema.parse(req.body)));
+}
+
+export async function addPhoto(req, res) {
+  const { id } = idSchema.parse(req.params);
+  res.status(201).json(await service.addPhoto(req.user.id, id, req.body));
+}
+
+export async function deletePhoto(req, res) {
+  const { id, photoId } = photoParamsSchema.parse(req.params);
+  await service.deletePhoto(req.user.id, id, photoId);
+  res.status(204).end();
 }
 
 export async function listSlots(req, res) {

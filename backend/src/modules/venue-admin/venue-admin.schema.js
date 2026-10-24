@@ -6,6 +6,7 @@ const capacity = z.number().int().min(2).max(30);
 const name = z.string().trim().min(2).max(60);
 
 export const idSchema = z.object({ id: z.uuid() });
+export const photoParamsSchema = z.object({ id: z.uuid(), photoId: z.uuid() });
 export const dateSchema = z.object({ date: z.iso.date() });
 
 // Venue pertama untuk akun VENUE_ADMIN yang belum punya venue (mis. akun

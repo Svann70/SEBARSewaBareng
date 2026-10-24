@@ -20,12 +20,16 @@ Error `RAISE EXCEPTION 'SEBAR::<KODE>'` dari DB dipetakan ke HTTP di `src/middle
 
 ## Setup
 
-Skema database **tidak** dikelola repo ini: tabel sudah ada di Supabase. Tidak ada migrasi.
+Seluruh skema ada di migrasi Drizzle `drizzle/` dan dijalankan dengan `npm run db:migrate` (tercatat
+di `drizzle.__drizzle_migrations`, yang sudah jalan dilewati). `0000_baseline` = skema dasar (enum,
+tabel, function/trigger aturan uang, view, RLS); semua migrasi idempoten, jadi aman juga untuk
+Supabase yang skemanya sudah ada. Skema untuk query: `db/schema/` (satu file per tabel, enum di `enums.js`).
 
 ```bash
 cd backend
 npm install
 cp .env.example .env      # isi DATABASE_URL, DATABASE_SSL_CA, JWT_SECRET
+npm run db:migrate        # terapkan migrasi drizzle/ yang belum jalan
 npm run dev               # http://localhost:3000/healthz
 ```
 
@@ -35,17 +39,58 @@ Supabase:
    Tanpa CA, server menolak start bila host DB bukan localhost.
 3. Pastikan RLS aktif di semua tabel (Data API/anon key tidak boleh akses langsung); backend memakai koneksi owner.
 
-Sekali saja, berurutan, di Supabase SQL Editor:
-1. `db/supabase/001_refresh_tokens.sql` (tabel `refresh_tokens`). Tanpa ini, register/login gagal.
-2. `db/supabase/002_court_price_weekend.sql` (kolom `courts.price_weekend`, harga Sabtu–Minggu).
-3. `db/supabase/003_court_setup.sql` (jam buka–tutup, lapangan serbaguna `court_sports`, olahraga
-   Basket/Tenis/Padel, kolom `court_slots.released`). Tanpa 002 + 003, katalog venue, buat room,
-   dan `npm run seed` gagal.
+Migrasi (`npm run db:migrate`, aman diulang; file yang dulu dijalankan manual di SQL Editor
+juga aman karena semuanya idempoten):
+- `0001_refresh_tokens` (tabel `refresh_tokens`). Tanpa ini, register/login gagal.
+- `0002_court_price_weekend` (kolom `courts.price_weekend`, harga Sabtu–Minggu).
+- `0003_court_setup` (jam buka–tutup, lapangan serbaguna `court_sports`, olahraga Basket/Tenis/Padel,
+  kolom `court_slots.released`). Tanpa 0002 + 0003, katalog venue, buat room, dan seed gagal.
+
+### Menambah / mengubah tabel (Drizzle)
+
+`db/schema/` berisi **semua** 16 tabel lengkap dengan index, check, dan foreign key (hasil
+`drizzle-kit pull`), satu file per tabel (mis. `court-slots.js`). Isinya harus sama persis dengan database: Drizzle membuat SQL
+dari selisih `db/schema/` vs `drizzle/meta`, jadi kalau ada yang dihapus dari `db/schema/`, migrasi
+berikutnya akan ikut menghapusnya dari database. Untuk tabel baru cukup tulis beberapa baris:
+
+1. Buat file baru `db/schema/court-photos.js` (contoh: foto lapangan):
+   ```js
+   import { pgTable, uuid, text, smallint, timestamp } from "drizzle-orm/pg-core";
+   import { courts } from "./courts.js";
+
+   export const courtPhotos = pgTable("court_photos", {
+   	id: uuid().defaultRandom().primaryKey(),
+   	courtId: uuid("court_id").notNull().references(() => courts.id, { onDelete: "cascade" }),
+   	url: text().notNull(),
+   	sort: smallint().default(0).notNull(),
+   	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+   }).enableRLS();
+   ```
+   lalu tambahkan `export * from "./court-photos.js";` di `db/schema/index.js`.
+   Selalu `.enableRLS()`: Data API/anon key Supabase tidak boleh membaca tabel langsung.
+2. `npm run db:generate -- --name=court_photos` → file baru `drizzle/0004_court_photos.sql` + `drizzle/meta/`.
+3. **Baca SQL-nya.** Harus hanya berisi perubahan yang dimaksud (di contoh: `CREATE TABLE`, `ENABLE ROW
+   LEVEL SECURITY`, foreign key). Ada `DROP` yang tidak diminta? Berhenti, cek `db/schema/`.
+4. `npm run db:migrate` ke database lokal, lalu `npm test` (tes juga menjalankan migrasi).
+5. Commit `db/schema/` + `drizzle/0004_*.sql` + `drizzle/meta/` dalam satu PR.
+6. Setelah PR masuk `main`: `npm run db:migrate` dengan `.env` Supabase.
+
+Mengubah kolom sama caranya: ubah definisinya di `db/schema/`, lalu langkah 2–6. Trigger, function, view,
+atau constraint khusus (mis. `EXCLUDE`) tidak ditulis di `db/schema/`: `npx drizzle-kit generate --custom
+--name=<nama>` lalu tulis SQL-nya sendiri di file yang dibuat (buat idempoten: `IF NOT EXISTS`,
+`OR REPLACE`). **Jangan pakai `drizzle-kit push`**: Drizzle tidak mengenal trigger, function, `EXCLUDE`
+anti tumpang tindih, dan RLS di database ini, jadi `push` bisa menghapusnya.
 
 Setup lapangan sekali di awal: semua jam di dalam jam buka bisa disewa tanpa pemilik membuka slot.
 Room selalu memakai tarif lapangan (weekday/weekend × durasi). Slot `OPEN` tanpa room aktif hanya
 penanda jam kosong: saat jamnya dipesan, slot itu dihapus (atau `released` bila masih dirujuk room
 lama yang batal/kedaluwarsa). Pemilik menutup jam lewat `POST /venue/slots` dengan `status: BLOCKED`.
+
+Foto lapangan: bucket **publik** di Supabase Storage (`SUPABASE_PHOTO_BUCKET`, default `courts-photos`).
+App mengunggah lewat backend (cek pemilik, jenis, ukuran); backend menulis ke Storage dengan
+`SUPABASE_SERVICE_ROLE_KEY`. Data lapangan (`courts[].photos`) dan room (`court.photoUrl` = foto sampul)
+membawa URL publiknya. Hapus foto = hapus baris + berkasnya. Belum ada endpoint hapus lapangan; kalau nanti
+ditambah, hapus juga berkas `courts/<courtId>/` di bucket (FK cascade hanya menghapus baris DB).
 
 Flag `.env`:
 - `AUTH_RATE_LIMIT` (20/menit/IP untuk register/login, 5× itu untuk refresh/logout) dan `LOGIN_RATE_LIMIT`
@@ -80,12 +125,11 @@ Tiap modul: `*.routes.js` (path → handler), `*.controller.js` (validasi input,
 
 ## Tes
 
-Tes integrasi butuh Postgres sekali pakai, **bukan** Supabase. `test/fixtures/schema.sql` = hasil
-`pg_dump --schema-only` dari Supabase (tabel, trigger, function); ambil ulang bila skema Supabase berubah.
+Tes integrasi butuh Postgres sekali pakai, **bukan** Supabase. Database boleh kosong: tes menjalankan
+migrasi `drizzle/` sendiri sebelum mulai.
 
 ```bash
 docker run -d --name sebar-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=sebar_test -p 127.0.0.1:55432:5432 postgres:17-alpine
-psql postgresql://postgres:test@127.0.0.1:55432/sebar_test -f test/fixtures/schema.sql
 echo 'TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/sebar_test' > .env.test
 npm test
 ```
@@ -132,6 +176,8 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | PATCH | `/venue/venues/:id` | VENUE_ADMIN | name?, address?, city?, description? (minimal satu) | 200 venue | 404 bukan milik, 422 |
 | POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sports `[{sport, capacity}]` (atau sport + capacity), pricePerHour (weekday), priceWeekend?, openTime? (`HH:00`, default 06:00), closeTime? (`HH:00`, ≤ 24:00, default 22:00). sport: `BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`/`BASKETBALL`/`TENNIS`/`PADEL` | 201 court | 404 venue bukan milik, 409 nama dobel, 422 |
 | PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, sports? (ganti semua), pricePerHour?, priceWeekend?, capacity?, openTime?, closeTime?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik, 422 jam tutup ≤ jam buka |
+| POST | `/venue/courts/:id/photos` | VENUE_ADMIN | body = berkas foto (JPG/PNG/WEBP, ≤ 5 MB; jenis dicek dari isi berkas). Maks 6 per lapangan | 201 `{id, url, sort}` (url publik Supabase Storage) | 404 bukan milik, 409 sudah 6, 413, 415, 502 storage, 503 storage belum diatur |
+| DELETE | `/venue/courts/:id/photos/:photoId` | VENUE_ADMIN | - | 204 (berkas juga dihapus dari Storage) | 404 |
 | GET | `/venue/slots` | VENUE_ADMIN | date, venueId? | 200 `{items}` | 403 |
 | POST | `/venue/slots` | VENUE_ADMIN | courtId, startAt, endAt, price, status? (`OPEN`/`BLOCKED`; `BLOCKED` = tutup jam itu) | 201 slot | 409 bentrok, 404 bukan milik |
 | PATCH | `/venue/slots/:id` | VENUE_ADMIN | status? (`OPEN`/`BLOCKED`), price? | 200 slot | 409 sudah ada lobby/booking |

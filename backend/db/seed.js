@@ -1,8 +1,11 @@
-// Demo data (SDD §17.3): 1 venue admin, 8 players with balance, 1 venue in Bandung, slots for the next 7 days.
+// Demo data (SDD §17.3): 1 venue admin, 8 players with balance, 1 venue in Bandung with courts set up
+// once (opening hours, weekday/weekend price, a multi-purpose court), and 3 demo rooms made through the
+// same service code as the app: one half full, one full (auto-booked), one with only the host.
 // Idempotent: re-running skips rows that already exist. Never run against production data.
 import { hashPassword, verifyPassword } from '../src/lib/password.js';
 import { pool, tx } from '../src/db/pool.js';
 import { creditTopup } from '../src/modules/wallet/wallet.service.js';
+import * as lobbies from '../src/modules/lobbies/lobbies.service.js';
 
 // Outside localhost the seed needs ALLOW_SEED=1 and its own SEED_PASSWORD (the default one is public).
 const local = ['localhost', '127.0.0.1', '::1'].includes(new URL(process.env.DATABASE_URL).hostname);
@@ -34,9 +37,10 @@ async function upsertUser(c, email, fullName, role, topup) {
   return id;
 }
 
-await tx(async (c) => {
+const ids = await tx(async (c) => {
   const adminId = await upsertUser(c, 'venue@sebar.test', 'Admin GOR C-Tra', 'VENUE_ADMIN');
-  for (let i = 1; i <= 8; i++) await upsertUser(c, `pemain${i}@sebar.test`, `Pemain ${i}`, 'PLAYER', 500_000);
+  const players = [];
+  for (let i = 1; i <= 8; i++) players.push(await upsertUser(c, `pemain${i}@sebar.test`, `Pemain ${i}`, 'PLAYER', 500_000));
 
   let venue = (await c.query('SELECT id FROM venues WHERE owner_id = $1 AND name = $2', [adminId, 'GOR C-Tra'])).rows[0];
   venue ??= (
@@ -46,29 +50,65 @@ await tx(async (c) => {
     )
   ).rows[0];
 
+  // Set up once: every hour inside open–close is bookable, no slots opened by hand.
+  // [name, [[sport, capacity], ...] (first = main sport), weekday price, weekend price, open, close]
   const courts = [
-    ['Badminton A', 'BADMINTON', 100_000, 125_000, 8],
-    ['Badminton B', 'BADMINTON', 100_000, 125_000, 8],
-    ['Futsal 1', 'FUTSAL', 250_000, 300_000, 14],
+    ['Badminton A', [['BADMINTON', 4]], 100_000, 125_000, '07:00', '23:00'],
+    ['Badminton B', [['BADMINTON', 4]], 100_000, 125_000, '07:00', '23:00'],
+    ['Futsal 1', [['FUTSAL', 14]], 250_000, 300_000, '08:00', '24:00'],
+    ['Serbaguna 1', [['FUTSAL', 10], ['BASKETBALL', 10]], 200_000, 250_000, '08:00', '22:00'],
   ];
-  for (const [name, sport, price, weekend, capacity] of courts) {
+  const courtIds = {};
+  for (const [name, sports, price, weekend, open, close] of courts) {
+    const [[sport, capacity]] = sports;
     const court = (
       await c.query(
-        `INSERT INTO courts (venue_id, name, sport_type, price_per_hour, price_weekend, capacity) VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (venue_id, name) DO UPDATE SET price_per_hour = EXCLUDED.price_per_hour, price_weekend = EXCLUDED.price_weekend RETURNING id`,
-        [venue.id, name, sport, price, weekend, capacity],
+        `INSERT INTO courts (venue_id, name, sport_type, capacity, price_per_hour, price_weekend, open_time, close_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (venue_id, name) DO UPDATE SET sport_type = EXCLUDED.sport_type, capacity = EXCLUDED.capacity,
+           price_per_hour = EXCLUDED.price_per_hour, price_weekend = EXCLUDED.price_weekend,
+           open_time = EXCLUDED.open_time, close_time = EXCLUDED.close_time
+         RETURNING id`,
+        [venue.id, name, sport, capacity, price, weekend, open, close],
       )
     ).rows[0];
-    // Two-hour slots at 08:00, 16:00 and 20:00 WIB for the next 7 days.
-    await c.query(
-      `INSERT INTO court_slots (court_id, start_at, end_at, price)
-       SELECT $1, t, t + interval '2 hours', (CASE WHEN extract(isodow FROM (t AT TIME ZONE 'Asia/Jakarta')) >= 6 THEN $3::numeric ELSE $2::numeric END)
-         FROM generate_series(1, 7) AS d, unnest(ARRAY[8, 16, 20]) AS h,
-              LATERAL (SELECT (((now() AT TIME ZONE 'Asia/Jakarta')::date + d) + make_interval(hours => h)) AT TIME ZONE 'Asia/Jakarta' AS t) x
-       ON CONFLICT (court_id, start_at) WHERE NOT released DO NOTHING`,
-      [court.id, price * 2, weekend * 2],
-    );
+    for (const [s, cap] of sports) {
+      await c.query(
+        `INSERT INTO court_sports (court_id, sport_type, capacity) VALUES ($1, $2, $3)
+         ON CONFLICT (court_id, sport_type) DO UPDATE SET capacity = EXCLUDED.capacity`,
+        [court.id, s, cap],
+      );
+    }
+    courtIds[name] = court.id;
   }
+  return { players, courtIds };
 });
+
+// WIB calendar date `days` from today (optionally the next Saturday on/after it) at `hour`.
+function wibStart(days, hour, saturday = false) {
+  const d = new Date(Date.now() + 7 * 3600_000);
+  d.setUTCDate(d.getUTCDate() + days);
+  while (saturday && d.getUTCDay() !== 6) d.setUTCDate(d.getUTCDate() + 1);
+  return `${d.toISOString().slice(0, 10)}T${String(hour).padStart(2, '0')}:00:00+07:00`;
+}
+
+// Demo rooms via the app's own service (wallet holds, auto-booking when full, all DB rules apply).
+const [p1, p2, p3, p4, p5, p6, p7, p8] = ids.players;
+const rooms = [
+  { host: p1, court: 'Futsal 1', startAt: wibStart(2, 19), hours: 2, sport: 'FUTSAL', title: 'Futsal Malam Santai', quota: 10, joiners: [p2, p3, p4] },
+  { host: p5, court: 'Badminton A', startAt: wibStart(2, 9, true), hours: 2, sport: 'BADMINTON', title: 'Badminton Ganda Sabtu', quota: 4, joiners: [p6, p7, p8] },
+  { host: p2, court: 'Serbaguna 1', startAt: wibStart(3, 16), hours: 2, sport: 'BASKETBALL', title: 'Basket Sore', quota: 10, joiners: [] },
+];
+for (const room of rooms) {
+  const exists = await pool.query(
+    `SELECT 1 FROM lobbies WHERE host_id = $1 AND title = $2 AND status IN ('OPEN', 'FILLED', 'CONFIRMED')`,
+    [room.host, room.title],
+  );
+  if (exists.rows[0]) continue;
+  const { host, court, joiners, ...input } = room;
+  const lobby = await lobbies.create(host, { ...input, courtId: ids.courtIds[court], minReliability: 0 });
+  for (const player of joiners) await lobbies.join(lobby.id, player);
+}
+
 console.log(`seeded. login: venue@sebar.test / pemain1..8@sebar.test, password ${process.env.SEED_PASSWORD ? '(SEED_PASSWORD)' : password}`);
 await pool.end();

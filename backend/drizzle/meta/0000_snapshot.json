@@ -1,0 +1,2335 @@
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "prevId": "",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.court_slots": {
+      "name": "court_slots",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "court_id": {
+          "name": "court_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_at": {
+          "name": "start_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_at": {
+          "name": "end_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price": {
+          "name": "price",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "slot_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'OPEN'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "released": {
+          "name": "released",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {
+        "court_slots_court_id_start_at_key": {
+          "name": "court_slots_court_id_start_at_key",
+          "columns": [
+            {
+              "expression": "court_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "start_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(NOT released)",
+          "with": {}
+        },
+        "idx_slots_court_start": {
+          "name": "idx_slots_court_start",
+          "columns": [
+            {
+              "expression": "court_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "start_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_slots_open": {
+          "name": "idx_slots_open",
+          "columns": [
+            {
+              "expression": "start_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = 'OPEN'::slot_status)",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "court_slots_court_id_fkey": {
+          "name": "court_slots_court_id_fkey",
+          "tableFrom": "court_slots",
+          "tableTo": "courts",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "court_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "court_slots_check": {
+          "name": "court_slots_check",
+          "value": "end_at > start_at"
+        },
+        "court_slots_price_check": {
+          "name": "court_slots_price_check",
+          "value": "price > (0)::numeric"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.venue_payouts": {
+      "name": "venue_payouts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "booking_id": {
+          "name": "booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "venue_id": {
+          "name": "venue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "payout_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PENDING'"
+        },
+        "disbursed_at": {
+          "name": "disbursed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "venue_payouts_booking_id_fkey": {
+          "name": "venue_payouts_booking_id_fkey",
+          "tableFrom": "venue_payouts",
+          "tableTo": "bookings",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "booking_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "venue_payouts_venue_id_fkey": {
+          "name": "venue_payouts_venue_id_fkey",
+          "tableFrom": "venue_payouts",
+          "tableTo": "venues",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "venue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "venue_payouts_booking_id_key": {
+          "columns": [
+            "booking_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "venue_payouts_booking_id_key"
+        }
+      },
+      "checkConstraints": {
+        "payouts_state_coherent": {
+          "name": "payouts_state_coherent",
+          "value": "((status = 'PENDING'::payout_status) AND (disbursed_at IS NULL)) OR ((status = 'PAID'::payout_status) AND (disbursed_at IS NOT NULL))"
+        },
+        "venue_payouts_amount_check": {
+          "name": "venue_payouts_amount_check",
+          "value": "amount > (0)::numeric"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.wallet_ledger": {
+      "name": "wallet_ledger",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "wallet_id": {
+          "name": "wallet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entry_type": {
+          "name": "entry_type",
+          "type": "ledger_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "balance_after": {
+          "name": "balance_after",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "held_after": {
+          "name": "held_after",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ref_type": {
+          "name": "ref_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ref_id": {
+          "name": "ref_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_ledger_ref": {
+          "name": "idx_ledger_ref",
+          "columns": [
+            {
+              "expression": "ref_type",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "ref_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_ledger_wallet": {
+          "name": "idx_ledger_wallet",
+          "columns": [
+            {
+              "expression": "wallet_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "created_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "wallet_ledger_wallet_id_fkey": {
+          "name": "wallet_ledger_wallet_id_fkey",
+          "tableFrom": "wallet_ledger",
+          "tableTo": "wallets",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "wallet_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "wallet_ledger_idempotency_key_key": {
+          "columns": [
+            "idempotency_key"
+          ],
+          "nullsNotDistinct": false,
+          "name": "wallet_ledger_idempotency_key_key"
+        }
+      },
+      "checkConstraints": {
+        "wallet_ledger_amount_check": {
+          "name": "wallet_ledger_amount_check",
+          "value": "amount > (0)::numeric"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.notifications": {
+      "name": "notifications",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "read_at": {
+          "name": "read_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_notifications_user_created": {
+          "name": "idx_notifications_user_created",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "created_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "notifications_user_id_fkey": {
+          "name": "notifications_user_id_fkey",
+          "tableFrom": "notifications",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.lobbies": {
+      "name": "lobbies",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "slot_id": {
+          "name": "slot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "host_id": {
+          "name": "host_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "min_reliability": {
+          "name": "min_reliability",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "quota": {
+          "name": "quota",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price_total": {
+          "name": "price_total",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price_per_person": {
+          "name": "price_per_person",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "ceil((price_total / (quota)::numeric))",
+            "type": "stored"
+          }
+        },
+        "join_deadline": {
+          "name": "join_deadline",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "lobby_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'OPEN'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sport_type": {
+          "name": "sport_type",
+          "type": "sport_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_lobbies_search": {
+          "name": "idx_lobbies_search",
+          "columns": [
+            {
+              "expression": "status",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "numeric_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "min_reliability",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "enum_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "created_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "uq_lobbies_active_slot": {
+          "name": "uq_lobbies_active_slot",
+          "columns": [
+            {
+              "expression": "slot_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "where": "(status = ANY (ARRAY['OPEN'::lobby_status, 'FILLED'::lobby_status, 'CONFIRMED'::lobby_status]))",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lobbies_host_id_fkey": {
+          "name": "lobbies_host_id_fkey",
+          "tableFrom": "lobbies",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "host_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lobbies_slot_id_fkey": {
+          "name": "lobbies_slot_id_fkey",
+          "tableFrom": "lobbies",
+          "tableTo": "court_slots",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "slot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lobbies_min_reliability_check": {
+          "name": "lobbies_min_reliability_check",
+          "value": "(min_reliability >= (0)::numeric) AND (min_reliability <= (100)::numeric)"
+        },
+        "lobbies_price_total_check": {
+          "name": "lobbies_price_total_check",
+          "value": "price_total > (0)::numeric"
+        },
+        "lobbies_quota_check": {
+          "name": "lobbies_quota_check",
+          "value": "(quota >= 2) AND (quota <= 30)"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "citext",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phone": {
+          "name": "phone",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "full_name": {
+          "name": "full_name",
+          "type": "varchar(80)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "user_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PLAYER'"
+        },
+        "reliability_score": {
+          "name": "reliability_score",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'100'"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_email_key": {
+          "columns": [
+            "email"
+          ],
+          "nullsNotDistinct": false,
+          "name": "users_email_key"
+        },
+        "users_phone_key": {
+          "columns": [
+            "phone"
+          ],
+          "nullsNotDistinct": false,
+          "name": "users_phone_key"
+        }
+      },
+      "checkConstraints": {
+        "users_reliability_score_check": {
+          "name": "users_reliability_score_check",
+          "value": "(reliability_score >= (0)::numeric) AND (reliability_score <= (100)::numeric)"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.venues": {
+      "name": "venues",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "city": {
+          "name": "city",
+          "type": "varchar(60)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "photo_url": {
+          "name": "photo_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "venue_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_venues_city_status": {
+          "name": "idx_venues_city_status",
+          "columns": [
+            {
+              "expression": "city",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "status",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "venues_owner_id_fkey": {
+          "name": "venues_owner_id_fkey",
+          "tableFrom": "venues",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.bookings": {
+      "name": "bookings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "lobby_id": {
+          "name": "lobby_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slot_id": {
+          "name": "slot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "booking_code": {
+          "name": "booking_code",
+          "type": "varchar(12)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gross_amount": {
+          "name": "gross_amount",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "platform_fee": {
+          "name": "platform_fee",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rounding_surplus": {
+          "name": "rounding_surplus",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "venue_payout": {
+          "name": "venue_payout",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "booking_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'CONFIRMED'"
+        },
+        "booked_at": {
+          "name": "booked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_bookings_status_booked_at": {
+          "name": "idx_bookings_status_booked_at",
+          "columns": [
+            {
+              "expression": "status",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "booked_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bookings_lobby_id_fkey": {
+          "name": "bookings_lobby_id_fkey",
+          "tableFrom": "bookings",
+          "tableTo": "lobbies",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "lobby_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "bookings_slot_id_fkey": {
+          "name": "bookings_slot_id_fkey",
+          "tableFrom": "bookings",
+          "tableTo": "court_slots",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "slot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "bookings_lobby_id_key": {
+          "columns": [
+            "lobby_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "bookings_lobby_id_key"
+        },
+        "bookings_slot_id_key": {
+          "columns": [
+            "slot_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "bookings_slot_id_key"
+        },
+        "bookings_booking_code_key": {
+          "columns": [
+            "booking_code"
+          ],
+          "nullsNotDistinct": false,
+          "name": "bookings_booking_code_key"
+        }
+      },
+      "checkConstraints": {
+        "bookings_fee_is_5pct": {
+          "name": "bookings_fee_is_5pct",
+          "value": "platform_fee = round((gross_amount * 0.05), 2)"
+        },
+        "bookings_gross_amount_check": {
+          "name": "bookings_gross_amount_check",
+          "value": "gross_amount > (0)::numeric"
+        },
+        "bookings_payout_invariant": {
+          "name": "bookings_payout_invariant",
+          "value": "venue_payout >= (gross_amount - platform_fee)"
+        },
+        "bookings_platform_fee_check": {
+          "name": "bookings_platform_fee_check",
+          "value": "platform_fee >= (0)::numeric"
+        },
+        "bookings_rounding_surplus_check": {
+          "name": "bookings_rounding_surplus_check",
+          "value": "rounding_surplus >= (0)::numeric"
+        },
+        "bookings_venue_payout_check": {
+          "name": "bookings_venue_payout_check",
+          "value": "venue_payout > (0)::numeric"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.wallets": {
+      "name": "wallets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "balance": {
+          "name": "balance",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "held_balance": {
+          "name": "held_balance",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "wallets_user_id_fkey": {
+          "name": "wallets_user_id_fkey",
+          "tableFrom": "wallets",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "wallets_user_id_key": {
+          "columns": [
+            "user_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "wallets_user_id_key"
+        }
+      },
+      "checkConstraints": {
+        "wallets_balance_check": {
+          "name": "wallets_balance_check",
+          "value": "balance >= (0)::numeric"
+        },
+        "wallets_balance_gte_held": {
+          "name": "wallets_balance_gte_held",
+          "value": "balance >= held_balance"
+        },
+        "wallets_held_balance_check": {
+          "name": "wallets_held_balance_check",
+          "value": "held_balance >= (0)::numeric"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.reliability_events": {
+      "name": "reliability_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lobby_id": {
+          "name": "lobby_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delta": {
+          "name": "delta",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "reliability_reason",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score_after": {
+          "name": "score_after",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_reliability_user_created": {
+          "name": "idx_reliability_user_created",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "created_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "reliability_events_lobby_id_fkey": {
+          "name": "reliability_events_lobby_id_fkey",
+          "tableFrom": "reliability_events",
+          "tableTo": "lobbies",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "lobby_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "reliability_events_user_id_fkey": {
+          "name": "reliability_events_user_id_fkey",
+          "tableFrom": "reliability_events",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "reliability_events_delta_check": {
+          "name": "reliability_events_delta_check",
+          "value": "delta <> (0)::numeric"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.audit_log": {
+      "name": "audit_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity": {
+          "name": "entity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "before": {
+          "name": "before",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "after": {
+          "name": "after",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_audit_entity": {
+          "name": "idx_audit_entity",
+          "columns": [
+            {
+              "expression": "entity",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "entity_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "text_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "created_at",
+              "asc": false,
+              "nulls": "first",
+              "opclass": "text_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "audit_log_actor_id_fkey": {
+          "name": "audit_log_actor_id_fkey",
+          "tableFrom": "audit_log",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.lobby_members": {
+      "name": "lobby_members",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "lobby_id": {
+          "name": "lobby_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role_in_lobby": {
+          "name": "role_in_lobby",
+          "type": "member_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PLAYER'"
+        },
+        "status": {
+          "name": "status",
+          "type": "member_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'HOLDING'"
+        },
+        "hold_amount": {
+          "name": "hold_amount",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hold_ledger_id": {
+          "name": "hold_ledger_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "cancelled_at": {
+          "name": "cancelled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_lobby_members_user": {
+          "name": "idx_lobby_members_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "status",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "enum_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lobby_members_hold_ledger_id_fkey": {
+          "name": "lobby_members_hold_ledger_id_fkey",
+          "tableFrom": "lobby_members",
+          "tableTo": "wallet_ledger",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "hold_ledger_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "lobby_members_lobby_id_fkey": {
+          "name": "lobby_members_lobby_id_fkey",
+          "tableFrom": "lobby_members",
+          "tableTo": "lobbies",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "lobby_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "lobby_members_user_id_fkey": {
+          "name": "lobby_members_user_id_fkey",
+          "tableFrom": "lobby_members",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "lobby_members_lobby_id_user_id_key": {
+          "columns": [
+            "lobby_id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "lobby_members_lobby_id_user_id_key"
+        }
+      },
+      "checkConstraints": {
+        "lobby_members_hold_amount_check": {
+          "name": "lobby_members_hold_amount_check",
+          "value": "hold_amount > (0)::numeric"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.checkins": {
+      "name": "checkins",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "booking_id": {
+          "name": "booking_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_expires_at": {
+          "name": "token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "checkin_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PENDING'"
+        },
+        "scanned_by": {
+          "name": "scanned_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scanned_at": {
+          "name": "scanned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_checkins_booking": {
+          "name": "idx_checkins_booking",
+          "columns": [
+            {
+              "expression": "booking_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            },
+            {
+              "expression": "status",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "checkins_booking_id_fkey": {
+          "name": "checkins_booking_id_fkey",
+          "tableFrom": "checkins",
+          "tableTo": "bookings",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "booking_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "checkins_scanned_by_fkey": {
+          "name": "checkins_scanned_by_fkey",
+          "tableFrom": "checkins",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "scanned_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "checkins_user_id_fkey": {
+          "name": "checkins_user_id_fkey",
+          "tableFrom": "checkins",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "checkins_booking_id_user_id_key": {
+          "columns": [
+            "booking_id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false,
+          "name": "checkins_booking_id_user_id_key"
+        },
+        "checkins_token_hash_key": {
+          "columns": [
+            "token_hash"
+          ],
+          "nullsNotDistinct": false,
+          "name": "checkins_token_hash_key"
+        }
+      },
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.refresh_tokens": {
+      "name": "refresh_tokens",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "family_id": {
+          "name": "family_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "char(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replaced_by": {
+          "name": "replaced_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_refresh_tokens_expires": {
+          "name": "idx_refresh_tokens_expires",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "timestamptz_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_refresh_tokens_family": {
+          "name": "idx_refresh_tokens_family",
+          "columns": [
+            {
+              "expression": "family_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "refresh_tokens_user_id_fkey": {
+          "name": "refresh_tokens_user_id_fkey",
+          "tableFrom": "refresh_tokens",
+          "tableTo": "users",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "refresh_tokens_replaced_by_fkey": {
+          "name": "refresh_tokens_replaced_by_fkey",
+          "tableFrom": "refresh_tokens",
+          "tableTo": "refresh_tokens",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "replaced_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "refresh_tokens_token_hash_key": {
+          "columns": [
+            "token_hash"
+          ],
+          "nullsNotDistinct": false,
+          "name": "refresh_tokens_token_hash_key"
+        }
+      },
+      "checkConstraints": {},
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.courts": {
+      "name": "courts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "venue_id": {
+          "name": "venue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(60)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sport_type": {
+          "name": "sport_type",
+          "type": "sport_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price_per_hour": {
+          "name": "price_per_hour",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "price_weekend": {
+          "name": "price_weekend",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "capacity": {
+          "name": "capacity",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "court_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "open_time": {
+          "name": "open_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'06:00:00'"
+        },
+        "close_time": {
+          "name": "close_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'22:00:00'"
+        }
+      },
+      "indexes": {
+        "idx_courts_venue": {
+          "name": "idx_courts_venue",
+          "columns": [
+            {
+              "expression": "venue_id",
+              "asc": true,
+              "nulls": "last",
+              "opclass": "uuid_ops",
+              "isExpression": false
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "courts_venue_id_fkey": {
+          "name": "courts_venue_id_fkey",
+          "tableFrom": "courts",
+          "tableTo": "venues",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "venue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "courts_venue_id_name_key": {
+          "columns": [
+            "venue_id",
+            "name"
+          ],
+          "nullsNotDistinct": false,
+          "name": "courts_venue_id_name_key"
+        }
+      },
+      "checkConstraints": {
+        "courts_capacity_check": {
+          "name": "courts_capacity_check",
+          "value": "(capacity >= 2) AND (capacity <= 30)"
+        },
+        "courts_price_per_hour_check": {
+          "name": "courts_price_per_hour_check",
+          "value": "price_per_hour > (0)::numeric"
+        },
+        "courts_hours_check": {
+          "name": "courts_hours_check",
+          "value": "close_time > open_time"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    },
+    "public.court_sports": {
+      "name": "court_sports",
+      "schema": "",
+      "columns": {
+        "court_id": {
+          "name": "court_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sport_type": {
+          "name": "sport_type",
+          "type": "sport_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "capacity": {
+          "name": "capacity",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "court_sports_court_id_fkey": {
+          "name": "court_sports_court_id_fkey",
+          "tableFrom": "court_sports",
+          "tableTo": "courts",
+          "schemaTo": "public",
+          "columnsFrom": [
+            "court_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "court_sports_pkey": {
+          "name": "court_sports_pkey",
+          "columns": [
+            "court_id",
+            "sport_type"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "court_sports_capacity_check": {
+          "name": "court_sports_capacity_check",
+          "value": "(capacity >= 2) AND (capacity <= 30)"
+        }
+      },
+      "policies": {},
+      "isRLSEnabled": true
+    }
+  },
+  "enums": {
+    "public.booking_status": {
+      "name": "booking_status",
+      "values": [
+        "CONFIRMED",
+        "COMPLETED",
+        "CANCELLED"
+      ],
+      "schema": "public"
+    },
+    "public.checkin_status": {
+      "name": "checkin_status",
+      "values": [
+        "PENDING",
+        "SCANNED",
+        "EXPIRED",
+        "NO_SHOW"
+      ],
+      "schema": "public"
+    },
+    "public.court_status": {
+      "name": "court_status",
+      "values": [
+        "ACTIVE",
+        "MAINTENANCE"
+      ],
+      "schema": "public"
+    },
+    "public.ledger_type": {
+      "name": "ledger_type",
+      "values": [
+        "TOPUP",
+        "HOLD",
+        "RELEASE",
+        "CAPTURE",
+        "REFUND",
+        "PAYOUT",
+        "PENALTY"
+      ],
+      "schema": "public"
+    },
+    "public.lobby_status": {
+      "name": "lobby_status",
+      "values": [
+        "OPEN",
+        "FILLED",
+        "CONFIRMED",
+        "CANCELLED",
+        "EXPIRED",
+        "FAILED"
+      ],
+      "schema": "public"
+    },
+    "public.member_role": {
+      "name": "member_role",
+      "values": [
+        "HOST",
+        "PLAYER"
+      ],
+      "schema": "public"
+    },
+    "public.member_status": {
+      "name": "member_status",
+      "values": [
+        "HOLDING",
+        "CONFIRMED",
+        "CANCELLED",
+        "REFUNDED",
+        "PENALIZED",
+        "NO_SHOW"
+      ],
+      "schema": "public"
+    },
+    "public.payout_status": {
+      "name": "payout_status",
+      "values": [
+        "PENDING",
+        "PAID"
+      ],
+      "schema": "public"
+    },
+    "public.reliability_reason": {
+      "name": "reliability_reason",
+      "values": [
+        "CHECKIN",
+        "LATE_CANCEL",
+        "NO_SHOW",
+        "HOST_CANCEL",
+        "MANUAL_ADJUST"
+      ],
+      "schema": "public"
+    },
+    "public.slot_status": {
+      "name": "slot_status",
+      "values": [
+        "OPEN",
+        "LOBBY_FULL",
+        "BOOKED",
+        "BLOCKED",
+        "PAST"
+      ],
+      "schema": "public"
+    },
+    "public.sport_type": {
+      "name": "sport_type",
+      "values": [
+        "BADMINTON",
+        "FUTSAL",
+        "VOLLEY",
+        "MINISOCCER",
+        "BASKETBALL",
+        "TENNIS",
+        "PADEL"
+      ],
+      "schema": "public"
+    },
+    "public.user_role": {
+      "name": "user_role",
+      "values": [
+        "PLAYER",
+        "VENUE_ADMIN",
+        "SUPER_ADMIN"
+      ],
+      "schema": "public"
+    },
+    "public.venue_status": {
+      "name": "venue_status",
+      "values": [
+        "ACTIVE",
+        "INACTIVE"
+      ],
+      "schema": "public"
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {
+    "public.vw_lobby_search": {
+      "name": "vw_lobby_search",
+      "schema": "public",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "slot_id": {
+          "name": "slot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "host_id": {
+          "name": "host_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "min_reliability": {
+          "name": "min_reliability",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quota": {
+          "name": "quota",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_total": {
+          "name": "price_total",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price_per_person": {
+          "name": "price_per_person",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "join_deadline": {
+          "name": "join_deadline",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "lobby_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_at": {
+          "name": "start_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_at": {
+          "name": "end_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sport_type": {
+          "name": "sport_type",
+          "type": "sport_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "court_name": {
+          "name": "court_name",
+          "type": "varchar(60)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "venue_id": {
+          "name": "venue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "venue_name": {
+          "name": "venue_name",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city": {
+          "name": "city",
+          "type": "varchar(60)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "joined": {
+          "name": "joined",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "isExisting": false,
+      "definition": "SELECT l.id, l.slot_id, l.host_id, l.title, l.min_reliability, l.quota, l.price_total, l.price_per_person, l.join_deadline, l.status, s.start_at, s.end_at, c.sport_type, c.name AS court_name, v.id AS venue_id, v.name AS venue_name, v.city, ( SELECT count(*) AS count FROM lobby_members m WHERE m.lobby_id = l.id AND (m.status = ANY (ARRAY['HOLDING'::member_status, 'CONFIRMED'::member_status]))) AS joined FROM lobbies l JOIN court_slots s ON s.id = l.slot_id JOIN courts c ON c.id = s.court_id JOIN venues v ON v.id = c.venue_id",
+      "materialized": false
+    },
+    "public.vw_venue_monthly_revenue": {
+      "name": "vw_venue_monthly_revenue",
+      "schema": "public",
+      "columns": {
+        "venue_id": {
+          "name": "venue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "venue_name": {
+          "name": "venue_name",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bulan": {
+          "name": "bulan",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_booking": {
+          "name": "total_booking",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "omzet": {
+          "name": "omzet",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fee_sebar": {
+          "name": "fee_sebar",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payout_gor": {
+          "name": "payout_gor",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "isExisting": false,
+      "definition": "SELECT v.id AS venue_id, v.name AS venue_name, date_trunc('month'::text, b.booked_at) AS bulan, count(*) AS total_booking, sum(b.gross_amount) AS omzet, sum(b.platform_fee) AS fee_sebar, sum(b.venue_payout) AS payout_gor FROM bookings b JOIN lobbies l ON l.id = b.lobby_id JOIN court_slots s ON s.id = b.slot_id JOIN courts c ON c.id = s.court_id JOIN venues v ON v.id = c.venue_id WHERE b.status <> 'CANCELLED'::booking_status GROUP BY v.id, v.name, (date_trunc('month'::text, b.booked_at))",
+      "materialized": false
+    }
+  },
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "tables": {}
+  }
+}

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'theme.dart';
 
@@ -1550,40 +1549,6 @@ class TrendChartPainter extends CustomPainter {
       old.values != values || old.color != color;
 }
 
-/// Foto lapangan dipakai lintas layar (detail room, detail slot, buat room).
-///
-/// Venue bisa mengganti foto per lapangan; semua layar membaca kunci yang
-/// sama ([courtPhotoKey]) sehingga foto baru langsung tampil di room yang
-/// memakai lapangan itu. ponytail: foto masih berupa URL (prasetel atau
-/// tempel manual); ganti ke unggahan galeri begitu API media tersedia.
-class CourtPhotoNotifier extends Notifier<Map<String, String>> {
-  @override
-  Map<String, String> build() => const {};
-
-  void setPhoto(String key, String url) => state = {...state, key: url};
-}
-
-class CourtGalleryNotifier extends Notifier<Map<String, List<String>>> {
-  @override
-  Map<String, List<String>> build() => const {};
-
-  /// Tambah foto ke galeri lapangan dan jadikan foto utama.
-  void addPhoto(String key, String url) {
-    state = {...state, key: [...state[key] ?? const [], url]};
-    ref.read(courtPhotosProvider.notifier).setPhoto(key, url);
-  }
-}
-
-final courtPhotosProvider =
-    NotifierProvider<CourtPhotoNotifier, Map<String, String>>(
-      CourtPhotoNotifier.new,
-    );
-
-final courtGalleriesProvider =
-    NotifierProvider<CourtGalleryNotifier, Map<String, List<String>>>(
-      CourtGalleryNotifier.new,
-    );
-
 /// Buang controller milik dialog/bottom sheet setelah animasi tutupnya
 /// selesai. Future dari showDialog/showModalBottomSheet selesai saat route
 /// di-pop, sementara TextField di dalamnya masih dibangun selama animasi;
@@ -1597,49 +1562,26 @@ void disposeAfterClose(List<ChangeNotifier> controllers) {
   });
 }
 
-/// Kunci foto: venue + lapangan, huruf kecil.
-String courtPhotoKey(String venue, String court) =>
-    '${venue.trim().toLowerCase()}|${court.trim().toLowerCase()}';
-
-class CourtPhoto extends ConsumerWidget {
+/// Foto lapangan (sampul dari Supabase Storage). Tanpa foto: placeholder hijau.
+class CourtPhoto extends StatelessWidget {
   const CourtPhoto({
     super.key,
-    required this.venue,
-    required this.court,
+    required this.url,
     this.height = 170,
     this.radius = 20,
     this.scrim = false,
   });
 
-  final String venue;
-  final String court;
+  final String? url;
   final double height;
   final double radius;
 
   /// Lapisan gelap pengaman agar teks putih di atas foto tetap ≥ 4,5:1.
   final bool scrim;
 
-  String get photoKey => courtPhotoKey(venue, court);
-
-  /// Pilihan foto bawaan untuk pemilih foto di sisi venue.
-  static List<String> presets(String key) => [
-    for (var i = 1; i <= 6; i++)
-      'https://picsum.photos/seed/sebar-${_hash(key)}-$i/800/450',
-  ];
-
-  static int _hash(String value) {
-    var hash = 7;
-    for (final unit in value.codeUnits) {
-      hash = (hash * 31 + unit) % 9973;
-    }
-    return hash;
-  }
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Tanpa foto pilihan venue: placeholder hijau, bukan foto acak yang
-    // bisa tidak nyambung dengan olahraganya.
-    final url = ref.watch(courtPhotosProvider)[photoKey];
+  Widget build(BuildContext context) {
+    final url = this.url;
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: SizedBox(
