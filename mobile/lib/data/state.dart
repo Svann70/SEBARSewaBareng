@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show ProviderOrFamily;
 
 import '../core/money.dart';
 import '../core/theme.dart';
+import '../core/widgets.dart' show courtPhotosProvider;
 import 'api.dart';
 
 enum Sport { badminton, futsal, volley, minisoccer }
@@ -96,11 +98,25 @@ final sessionProvider = NotifierProvider<SessionNotifier, SessionUser?>(
 
 class AuthNotifier extends Notifier<AccountRole?> {
   @override
-  AccountRole? build() => null;
+  AccountRole? build() {
+    void onExpired() => _endSession();
+    api.onSessionExpired = onExpired;
+    ref.onDispose(() {
+      // Container lain (tes) bisa sudah memasang callback-nya sendiri.
+      if (api.onSessionExpired == onExpired) api.onSessionExpired = null;
+    });
+    return null;
+  }
 
-  /// Login lokal (dipakai tes/offline).
+  /// Pesan untuk layar masuk setelah sesi dicabut server; dibaca sekali.
+  String? _sessionNotice;
+
+  /// Login lokal tanpa token, hanya untuk tes. Jangan dipakai di lib/:
+  /// router guard hanya melihat [state].
+  @visibleForTesting
   void login(AccountRole role) => state = role;
 
+  @visibleForTesting
   void logout() => state = null;
 
   /// Login ke server. null = sukses, selain itu pesan error.
@@ -109,8 +125,13 @@ class AuthNotifier extends Notifier<AccountRole?> {
       await api.login(email.trim(), password);
       final user = SessionUser.fromJson(api.user ?? const {});
       ref.read(sessionProvider.notifier).set(user);
-      state = user.role;
       await _bootstrap(user.role);
+      // Router pindah ke beranda begitu state terisi; tunggu data awal dulu.
+      // Sesi bisa dicabut selama bootstrap: jangan masuk tanpa token.
+      if (!api.hasSession) {
+        return takeSessionNotice() ?? 'Sesi berakhir. Silakan masuk lagi.';
+      }
+      state = user.role;
       return null;
     } catch (error) {
       return apiMessage(error);
@@ -135,8 +156,13 @@ class AuthNotifier extends Notifier<AccountRole?> {
       );
       final user = SessionUser.fromJson(api.user ?? const {});
       ref.read(sessionProvider.notifier).set(user);
-      state = user.role;
       await _bootstrap(user.role);
+      // Router pindah ke beranda begitu state terisi; tunggu data awal dulu.
+      // Sesi bisa dicabut selama bootstrap: jangan masuk tanpa token.
+      if (!api.hasSession) {
+        return takeSessionNotice() ?? 'Sesi berakhir. Silakan masuk lagi.';
+      }
+      state = user.role;
       return null;
     } catch (error) {
       return apiMessage(error);
@@ -145,15 +171,47 @@ class AuthNotifier extends Notifier<AccountRole?> {
 
   Future<void> signOut() async {
     await api.logout();
+    _endSession(notice: null);
+    // Callback sesi berakhir bisa terpanggil selama logout menunggu server.
+    _sessionNotice = null;
+  }
+
+  /// Kosongkan sesi lalu buang data akun sebelumnya. Router mengarahkan ke
+  /// /login begitu [state] null.
+  void _endSession({String? notice = 'Sesi berakhir. Silakan masuk lagi.'}) {
+    if (state == null && ref.read(sessionProvider) == null) return;
+    _sessionNotice = notice;
     ref.read(sessionProvider.notifier).set(null);
     state = null;
+    // Ditunda: callback bisa terpanggil di tengah refresh provider lain.
+    venueProfile = _seedVenueProfile;
+    Future.microtask(() {
+      if (!ref.mounted) return;
+      for (final p in _accountData) {
+        ref.invalidate(p);
+      }
+    });
+  }
+
+  String? takeSessionNotice() {
+    final notice = _sessionNotice;
+    _sessionNotice = null;
+    return notice;
   }
 
   /// Simpan nama/telepon ke server lalu perbarui sesi lokal.
   /// [clearPhone] true menghapus nomor telepon.
-  Future<String?> updateProfile({String? fullName, String? phone, bool clearPhone = false}) async {
+  Future<String?> updateProfile({
+    String? fullName,
+    String? phone,
+    bool clearPhone = false,
+  }) async {
     try {
-      await api.updateMe(fullName: fullName, phone: phone, clearPhone: clearPhone);
+      await api.updateMe(
+        fullName: fullName,
+        phone: phone,
+        clearPhone: clearPhone,
+      );
       ref
           .read(sessionProvider.notifier)
           .set(SessionUser.fromJson(api.user ?? const {}));
@@ -164,7 +222,10 @@ class AuthNotifier extends Notifier<AccountRole?> {
   }
 
   /// Ubah password. Sukses = semua sesi dicabut server, pemanggil wajib signOut.
-  Future<String?> changePassword({required String current, required String next}) async {
+  Future<String?> changePassword({
+    required String current,
+    required String next,
+  }) async {
     try {
       await api.changePassword(current: current, next: next);
       return null;
@@ -193,6 +254,19 @@ class AuthNotifier extends Notifier<AccountRole?> {
 final authProvider = NotifierProvider<AuthNotifier, AccountRole?>(
   AuthNotifier.new,
 );
+
+/// Data milik akun yang dibuang saat keluar, supaya akun berikutnya di
+/// perangkat yang sama tidak melihatnya.
+final _accountData = <ProviderOrFamily>[
+  venuesProvider,
+  venueSlotsProvider,
+  lobbiesProvider,
+  walletProvider,
+  bookingsProvider,
+  filterProvider,
+  chatProvider,
+  courtPhotosProvider,
+];
 
 /// Pesan error yang aman ditampilkan ke pengguna.
 String apiMessage(Object error) =>
@@ -248,7 +322,7 @@ LobbyStatus _lobbyStatusFromApi(String? value) => switch (value) {
 
 /// Profil venue pemilik akun venue. Nilai awal = seed, diganti dari
 /// `/venue/venues` setelah login supaya nama dan jumlah lapangan sesuai akun.
-var venueProfile = (
+const _seedVenueProfile = (
   name: 'GOR C-Tra Arena',
   city: 'Bandung',
   courts: 2,
@@ -257,6 +331,7 @@ var venueProfile = (
   payout: 12750000,
   joinedAt: 'Mitra sejak Mar 2024',
 );
+var venueProfile = _seedVenueProfile;
 
 /// Venue + aturan harga sewa per jam. Harga akhir mengikuti hari:
 /// Senin–Jumat memakai tarif weekday, Sabtu–Minggu tarif weekend.
@@ -858,11 +933,10 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     required String city,
   }) async {
     try {
-      await api.post('/venue/venues', body: {
-        'name': name,
-        'address': address,
-        'city': city,
-      });
+      await api.post(
+        '/venue/venues',
+        body: {'name': name, 'address': address, 'city': city},
+      );
       await refresh();
       return null;
     } catch (error) {
