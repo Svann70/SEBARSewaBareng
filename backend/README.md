@@ -129,6 +129,7 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | DELETE | `/lobbies/:id` | host | - | 200 `{refundedMembers}` | 403, 409, 410 lewat deadline |
 | GET | `/venue/venues` | VENUE_ADMIN | - | 200 venue + courts milik sendiri | 403 |
 | POST | `/venue/venues` | VENUE_ADMIN | name (3–120), address (5–300), city (2–60), description? | 201 venue (untuk akun yang belum punya venue) | 403, 422 |
+| PATCH | `/venue/venues/:id` | VENUE_ADMIN | name?, address?, city?, description? (minimal satu) | 200 venue | 404 bukan milik, 422 |
 | POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sports `[{sport, capacity}]` (atau sport + capacity), pricePerHour (weekday), priceWeekend?, openTime? (`HH:00`, default 06:00), closeTime? (`HH:00`, ≤ 24:00, default 22:00). sport: `BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`/`BASKETBALL`/`TENNIS`/`PADEL` | 201 court | 404 venue bukan milik, 409 nama dobel, 422 |
 | PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, sports? (ganti semua), pricePerHour?, priceWeekend?, capacity?, openTime?, closeTime?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik, 422 jam tutup ≤ jam buka |
 | GET | `/venue/slots` | VENUE_ADMIN | date, venueId? | 200 `{items}` | 403 |

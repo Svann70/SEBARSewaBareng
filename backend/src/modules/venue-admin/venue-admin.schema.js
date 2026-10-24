@@ -17,6 +17,10 @@ export const createVenueSchema = z.object({
   description: z.string().trim().max(1000).optional(),
 });
 
+export const patchVenueSchema = createVenueSchema
+  .partial()
+  .refine((b) => Object.values(b).some((v) => v !== undefined), { message: 'Isi minimal satu field' });
+
 // venueId opsional: tanpa itu, slot semua venue milik akun ini dikembalikan.
 export const slotsQuerySchema = z.object({
   date: z.iso.date(),
@@ -46,7 +50,7 @@ export const createCourtSchema = z
     sport: z.enum(SPORTS).optional(),
     capacity: capacity.optional(),
     pricePerHour: price,
-    priceWeekend: price.optional(),
+    priceWeekend: price.nullable().optional(),
     openTime: openTime.default('06:00'),
     closeTime: closeTime.default('22:00'),
   })

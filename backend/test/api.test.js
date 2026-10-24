@@ -596,6 +596,8 @@ describe('court setup (one-time, no manual slots)', { skip }, () => {
     assert.equal(legacy.status, 201, JSON.stringify(legacy.body));
     assert.deepEqual(legacy.body.sports, [{ sport: 'BADMINTON', capacity: 8 }]);
     assert.equal(legacy.body.priceWeekend, null, 'no weekend price = weekday price');
+    const nullWeekend = await post({ name: 'Lap C', sport: 'BADMINTON', capacity: 4, priceWeekend: null });
+    assert.equal(nullWeekend.status, 201, 'explicit null weekend price = weekday price');
     assert.equal(legacy.body.closeTime, '24:00');
     assert.equal((await post({ name: 'Lap B', sport: 'BADMINTON', capacity: 8 })).status, 409, 'duplicate court name');
 
@@ -789,5 +791,30 @@ describe('court setup: no double booking (review round 2)', { skip }, () => {
     );
     const codes = results.map((r) => r.status).sort();
     assert.deepEqual(codes, [201, 409, 409, 409], JSON.stringify(results.map((r) => r.body)));
+  });
+});
+
+describe('venue setup form', { skip }, () => {
+  test('owner edits venue details; other owners cannot; courts can be switched off', async () => {
+    const { admin, venueId, court } = await setupCourt();
+    const r = await api('PATCH', `/venue/venues/${venueId}`, { token: admin.token, body: { name: 'GOR Baru Jaya', city: 'Cimahi' } });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.name, 'GOR Baru Jaya');
+    assert.equal(r.body.city, 'Cimahi');
+    const mine = await api('GET', '/venue/venues', { token: admin.token });
+    assert.equal(mine.body.items[0].address, 'Jl. Tes No. 1');
+    assert.equal((await api('PATCH', `/venue/venues/${venueId}`, { token: admin.token, body: {} })).status, 422);
+    const other = await register('VENUE_ADMIN');
+    assert.equal((await api('PATCH', `/venue/venues/${venueId}`, { token: other.token, body: { name: 'Curian' } })).status, 404);
+
+    // Off = hidden from players and not bookable; the owner still sees it.
+    const off = await api('PATCH', `/venue/courts/${court.id}`, { token: admin.token, body: { status: 'MAINTENANCE' } });
+    assert.equal(off.status, 200);
+    const p = await player(1_000_000);
+    const grid = await api('GET', `/venues/${venueId}/availability?date=${wibDate(30, false)}`, { token: p.token });
+    assert.equal(grid.body.courts.length, 0);
+    assert.equal((await roomAt(p, court.id, wibAt(wibDate(30, false), 10), { sport: 'FUTSAL' })).status, 404);
+    const own = await api('GET', '/venue/venues', { token: admin.token });
+    assert.equal(own.body.items[0].courts[0].status, 'MAINTENANCE');
   });
 });

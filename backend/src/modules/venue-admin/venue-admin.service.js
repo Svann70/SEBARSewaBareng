@@ -8,7 +8,7 @@ import { SLOT_SELECT } from '../venues/slots.shared.js';
 
 export async function listVenues(ownerId) {
   const { rows } = await query(
-    `SELECT v.id, v.name, v.city, v.status,
+    `SELECT v.id, v.name, v.address, v.city, v.description, v.status,
             COALESCE(json_agg(${courtJson('c')} ORDER BY c.name) FILTER (WHERE c.id IS NOT NULL), '[]') AS courts
        FROM venues v LEFT JOIN courts c ON c.venue_id = v.id
       WHERE v.owner_id = $1 GROUP BY v.id ORDER BY v.name`,
@@ -26,6 +26,19 @@ export async function createVenue(ownerId, { name, address, city, description })
     [ownerId, name, address, city, description ?? null],
   );
   return { ...rows[0], courts: [] };
+}
+
+// Venue details from the one-page setup form. Only the owner's own venue.
+export async function updateVenue(ownerId, venueId, { name, address, city, description }) {
+  const { rows } = await query(
+    `UPDATE venues SET name = COALESCE($3, name), address = COALESCE($4, address),
+            city = COALESCE($5, city), description = COALESCE($6, description)
+      WHERE id = $1 AND owner_id = $2
+      RETURNING id, name, address, city, description, status`,
+    [venueId, ownerId, name ?? null, address ?? null, city ?? null, description ?? null],
+  );
+  if (!rows[0]) throw new AppError(404, 'NOT_FOUND', 'Venue tidak ditemukan.');
+  return rows[0];
 }
 
 export async function listSlots(ownerId, { date, venueId }) {

@@ -7,7 +7,7 @@ import '../core/theme.dart';
 import '../core/widgets.dart' show courtPhotosProvider;
 import 'api.dart';
 
-enum Sport { badminton, futsal, volley, minisoccer }
+enum Sport { badminton, futsal, volley, minisoccer, basketball, tennis, padel }
 
 extension SportX on Sport {
   String get label => switch (this) {
@@ -15,6 +15,9 @@ extension SportX on Sport {
     Sport.futsal => 'Futsal',
     Sport.volley => 'Voli',
     Sport.minisoccer => 'Mini Soccer',
+    Sport.basketball => 'Basket',
+    Sport.tennis => 'Tenis',
+    Sport.padel => 'Padel',
   };
 
   IconData get icon => switch (this) {
@@ -22,6 +25,9 @@ extension SportX on Sport {
     Sport.futsal => Icons.sports_soccer,
     Sport.volley => Icons.sports_volleyball,
     Sport.minisoccer => Icons.sports_football,
+    Sport.basketball => Icons.sports_basketball,
+    Sport.tennis => Icons.sports_tennis,
+    Sport.padel => Icons.sports_tennis,
   };
 
   /// Header hero memakai satu warna brand saja supaya layar tidak ramai;
@@ -302,6 +308,9 @@ Sport sportFromApi(String? value) => switch (value?.toUpperCase()) {
   'FUTSAL' => Sport.futsal,
   'VOLLEY' => Sport.volley,
   'MINISOCCER' => Sport.minisoccer,
+  'BASKETBALL' => Sport.basketball,
+  'TENNIS' => Sport.tennis,
+  'PADEL' => Sport.padel,
   _ => Sport.badminton,
 };
 
@@ -310,6 +319,9 @@ String sportToApi(Sport sport) => switch (sport) {
   Sport.futsal => 'FUTSAL',
   Sport.volley => 'VOLLEY',
   Sport.minisoccer => 'MINISOCCER',
+  Sport.basketball => 'BASKETBALL',
+  Sport.tennis => 'TENNIS',
+  Sport.padel => 'PADEL',
 };
 
 LobbyStatus _lobbyStatusFromApi(String? value) => switch (value) {
@@ -322,15 +334,7 @@ LobbyStatus _lobbyStatusFromApi(String? value) => switch (value) {
 
 /// Profil venue pemilik akun venue. Nilai awal = seed, diganti dari
 /// `/venue/venues` setelah login supaya nama dan jumlah lapangan sesuai akun.
-const _seedVenueProfile = (
-  name: 'GOR C-Tra Arena',
-  city: 'Bandung',
-  courts: 2,
-  rating: 4.8,
-  verified: true,
-  payout: 12750000,
-  joinedAt: 'Mitra sejak Mar 2024',
-);
+const _seedVenueProfile = (name: '', city: '', courts: 0);
 var venueProfile = _seedVenueProfile;
 
 /// Venue + aturan harga sewa per jam. Harga akhir mengikuti hari:
@@ -409,6 +413,14 @@ VenueInfo venueByName(String name) =>
 
 /// ── Katalog venue dari API ──────────────────────────────────────────────
 
+/// Olahraga yang bisa dimainkan di satu lapangan + kapasitas pemainnya.
+class CourtSport {
+  const CourtSport(this.sport, this.capacity);
+
+  final Sport sport;
+  final int capacity;
+}
+
 class ApiCourt {
   const ApiCourt({
     required this.id,
@@ -417,16 +429,35 @@ class ApiCourt {
     required this.pricePerHour,
     required this.capacity,
     this.priceWeekend,
+    this.sports = const [],
+    this.openHour = 6,
+    this.closeHour = 22,
+    this.active = true,
   });
 
   final String id;
   final String name;
+
+  /// Olahraga utama (yang pertama di [sports]).
   final Sport sport;
   final int pricePerHour;
   final int capacity;
 
   /// Tarif Sabtu–Minggu; null = sama dengan `pricePerHour`.
   final int? priceWeekend;
+
+  /// Lapangan serbaguna: satu jam tetap satu booking, apa pun olahraganya.
+  final List<CourtSport> sports;
+
+  /// Jam buka–tutup harian (jam bulat, tutup boleh 24).
+  final int openHour;
+  final int closeHour;
+
+  /// Mati = tidak tampil ke pemain dan tidak bisa dipesan.
+  final bool active;
+
+  List<CourtSport> get allSports =>
+      sports.isEmpty ? [CourtSport(sport, capacity)] : sports;
 
   factory ApiCourt.fromJson(Map<String, dynamic> json) => ApiCourt(
     id: json['id'] as String? ?? '',
@@ -437,6 +468,16 @@ class ApiCourt {
     priceWeekend: json['priceWeekend'] == null
         ? null
         : _asInt(json['priceWeekend']),
+    sports: [
+      for (final item in _asList(json['sports']))
+        CourtSport(
+          sportFromApi(_asMap(item)['sport'] as String?),
+          _asInt(_asMap(item)['capacity'], 2),
+        ),
+    ],
+    openHour: _hourOf(json['openTime'], 6),
+    closeHour: _hourOf(json['closeTime'], 22),
+    active: (json['status'] as String? ?? 'ACTIVE') == 'ACTIVE',
   );
 
   /// Tarif per jam untuk slot yang mulai [start] (hari WIB Sabtu/Minggu = weekend).
@@ -447,23 +488,32 @@ class ApiCourt {
   }
 }
 
+/// 'HH:MM' dari API → jam bulat.
+int _hourOf(dynamic value, int fallback) {
+  final text = value is String ? value : '';
+  return int.tryParse(text.split(':').first) ?? fallback;
+}
+
 class ApiVenue {
   const ApiVenue({
     required this.id,
     required this.name,
     required this.city,
     required this.courts,
+    this.address = '',
   });
 
   final String id;
   final String name;
   final String city;
+  final String address;
   final List<ApiCourt> courts;
 
   factory ApiVenue.fromJson(Map<String, dynamic> json) => ApiVenue(
     id: json['id'] as String? ?? '',
     name: json['name'] as String? ?? 'Venue',
     city: json['city'] as String? ?? '',
+    address: json['address'] as String? ?? '',
     courts: [
       for (final c in _asList(json['courts'])) ApiCourt.fromJson(_asMap(c)),
     ],
@@ -765,15 +815,7 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
   void _applyProfile() {
     final v = venue;
     if (v == null) return;
-    venueProfile = (
-      name: v.name,
-      city: v.city,
-      courts: v.courts.length,
-      rating: venueProfile.rating,
-      verified: venueProfile.verified,
-      payout: venueProfile.payout,
-      joinedAt: venueProfile.joinedAt,
-    );
+    venueProfile = (name: v.name, city: v.city, courts: v.courts.length);
   }
 
   void _applySlots() {
@@ -893,17 +935,84 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     }
   }
 
-  /// Tarif per jam lapangan — sumber harga semua slot baru di lapangan itu.
-  /// Slot yang sudah ada menyimpan harganya sendiri.
-  Future<String?> setCourtPriceRemote(
-    String courtId,
-    int pricePerHour, {
-    int? priceWeekend,
+  /// Simpan form "Atur venue" sekaligus: data GOR lalu tiap lapangan
+  /// (baru = POST, lama = PATCH termasuk on/off). Berhenti di error pertama;
+  /// yang sudah tersimpan tetap tersimpan dan layar dimuat ulang.
+  Future<String?> saveSetup({
+    required String name,
+    required String address,
+    required String city,
+    required List<CourtDraft> courts,
   }) async {
     try {
-      await api.patch(
-        '/venue/courts/$courtId',
-        body: {'pricePerHour': pricePerHour, 'priceWeekend': ?priceWeekend},
+      var venueId = _venueId;
+      if (venueId == null) {
+        final created = _asMap(
+          await api.post(
+            '/venue/venues',
+            body: {'name': name, 'address': address, 'city': city},
+          ),
+        );
+        venueId = created['id'] as String?;
+        if (venueId == null) return 'Venue gagal dibuat.';
+      } else {
+        await api.patch(
+          '/venue/venues/$venueId',
+          body: {'name': name, 'address': address, 'city': city},
+        );
+      }
+      for (final court in courts) {
+        try {
+          if (court.id == null) {
+            final created = _asMap(
+              await api.post(
+                '/venue/courts',
+                body: {'venueId': venueId, ...court.toJson()},
+              ),
+            );
+            court.id = created['id'] as String?;
+            if (!court.active && court.id != null) {
+              await api.patch(
+                '/venue/courts/${court.id}',
+                body: {'status': 'MAINTENANCE'},
+              );
+            }
+          } else {
+            await api.patch(
+              '/venue/courts/${court.id}',
+              body: {
+                ...court.toJson(),
+                'status': court.active ? 'ACTIVE' : 'MAINTENANCE',
+              },
+            );
+          }
+        } catch (error) {
+          return '${court.name}: ${apiMessage(error)}';
+        }
+      }
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    } finally {
+      await refresh();
+    }
+  }
+
+  /// Tutup satu jam (perbaikan, dipakai sendiri): slot BLOCKED 1 jam.
+  Future<String?> closeHour(CourtDay day, HourCell cell) async {
+    try {
+      await api.post(
+        '/venue/slots',
+        body: {
+          'courtId': day.court.id,
+          'startAt': cell.start.toUtc().toIso8601String(),
+          'endAt': cell.start
+              .add(const Duration(hours: 1))
+              .toUtc()
+              .toIso8601String(),
+          'price': day.rate < 1000 ? 1000 : day.rate,
+          'status': 'BLOCKED',
+        },
       );
       await refresh();
       return null;
@@ -912,32 +1021,37 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     }
   }
 
-  Future<String?> addCourtRemote({
-    required String name,
-    required Sport sport,
-    required int pricePerHour,
-    int? priceWeekend,
-    required int capacity,
-  }) async {
-    final id = _venueId;
-    if (id == null) return 'Venue belum dimuat dari server.';
-    try {
-      await api.post(
-        '/venue/courts',
-        body: {
-          'venueId': id,
-          'name': name,
-          'sport': sportToApi(sport),
-          'pricePerHour': pricePerHour,
-          'priceWeekend': ?priceWeekend,
-          'capacity': capacity,
-        },
-      );
-      await refresh();
-      return null;
-    } catch (error) {
-      return apiMessage(error);
+  /// Buka lagi jam yang ditutup: slot BLOCKED yang menutupi [cell].
+  Future<String?> reopenHour(CourtDay day, HourCell cell) async {
+    final slot = blockedAt(day.court.id, cell.start);
+    if (slot == null) return 'Jam ini tidak ditutup.';
+    return setStatusRemote(slot.id, SlotStatus.open);
+  }
+
+  VenueSlot? blockedAt(String courtId, DateTime start) =>
+      _coveringSlot(courtId, start, (s) => s.status == SlotStatus.closed);
+
+  /// Siapa yang memakai jam ini (nama host · pemain), untuk jadwal venue.
+  String? bookingAt(String courtId, DateTime start) => _coveringSlot(
+    courtId,
+    start,
+    (s) => s.status != SlotStatus.closed && s.guest != null,
+  )?.guest;
+
+  VenueSlot? _coveringSlot(
+    String courtId,
+    DateTime start,
+    bool Function(VenueSlot) test,
+  ) {
+    for (final s in state) {
+      if (s.courtId == courtId &&
+          !s.start.isAfter(start) &&
+          s.end.isAfter(start) &&
+          test(s)) {
+        return s;
+      }
     }
+    return null;
   }
 
   /// Buat venue pertama untuk akun venue yang belum punya venue
@@ -959,6 +1073,146 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     }
   }
 }
+
+/// ── Setup lapangan (form "Atur venue") ──────────────────────────────────
+
+/// Isian satu lapangan di form. [id] null = lapangan baru.
+class CourtDraft {
+  CourtDraft({
+    this.id,
+    this.name = '',
+    Map<Sport, int>? sports,
+    this.weekdayPrice,
+    this.weekendPrice,
+    this.openHour = 6,
+    this.closeHour = 22,
+    this.active = true,
+  }) : sports = sports ?? {};
+
+  factory CourtDraft.from(ApiCourt c) => CourtDraft(
+    id: c.id,
+    name: c.name,
+    sports: {for (final s in c.allSports) s.sport: s.capacity},
+    weekdayPrice: c.pricePerHour,
+    weekendPrice: c.priceWeekend,
+    openHour: c.openHour,
+    closeHour: c.closeHour,
+    active: c.active,
+  );
+
+  /// Diisi setelah lapangan baru tersimpan, supaya simpan ulang (mis. setelah
+  /// lapangan lain gagal) mengubah lapangan ini, bukan membuat dobel.
+  String? id;
+  String name;
+
+  /// Olahraga terpilih → kapasitas pemain. Urutan sisip = olahraga utama dulu.
+  final Map<Sport, int> sports;
+  int? weekdayPrice;
+
+  /// null = sama dengan harga weekday.
+  int? weekendPrice;
+  int openHour;
+  int closeHour;
+  bool active;
+
+  /// Sama dengan validasi backend. null = valid.
+  String? validate() {
+    final n = name.trim();
+    if (n.length < 2 || n.length > 60) return 'Nama lapangan 2–60 huruf.';
+    if (sports.isEmpty) return 'Pilih minimal satu olahraga.';
+    for (final e in sports.entries) {
+      if (e.value < 2 || e.value > 30) {
+        return 'Kapasitas ${e.key.label} harus 2–30 orang.';
+      }
+    }
+    if (!_price(weekdayPrice)) {
+      return 'Harga Senin–Jumat Rp1.000–Rp100.000.000.';
+    }
+    if (weekendPrice != null && !_price(weekendPrice)) {
+      return 'Harga Sabtu–Minggu Rp1.000–Rp100.000.000.';
+    }
+    if (closeHour <= openHour) return 'Jam tutup harus setelah jam buka.';
+    return null;
+  }
+
+  static bool _price(int? v) => v != null && v >= 1000 && v <= 100000000;
+
+  static String _hhmm(int h) => '${h.toString().padLeft(2, '0')}:00';
+
+  Map<String, dynamic> toJson() => {
+    'name': name.trim(),
+    'sports': [
+      for (final e in sports.entries)
+        {'sport': sportToApi(e.key), 'capacity': e.value},
+    ],
+    'pricePerHour': weekdayPrice,
+    'priceWeekend': weekendPrice,
+    'openTime': _hhmm(openHour),
+    'closeTime': _hhmm(closeHour),
+  };
+}
+
+/// ── Jadwal otomatis (GET /venues/:id/availability) ───────────────────────
+
+enum HourState { free, taken, closed, past }
+
+class HourCell {
+  const HourCell(this.hour, this.start, this.state);
+
+  final int hour;
+  final DateTime start;
+  final HourState state;
+}
+
+class CourtDay {
+  const CourtDay(this.court, this.rate, this.hours);
+
+  final ApiCourt court;
+  final int rate;
+  final List<HourCell> hours;
+
+  int get taken => hours.where((h) => h.state == HourState.taken).length;
+}
+
+HourState _hourState(String? value) => switch (value) {
+  'TAKEN' => HourState.taken,
+  'CLOSED' => HourState.closed,
+  'PAST' => HourState.past,
+  _ => HourState.free,
+};
+
+/// Grid jam per lapangan aktif untuk satu tanggal. Lempar error bila gagal.
+Future<List<CourtDay>> loadAvailability(String venueId, DateTime day) async {
+  final data = _asMap(
+    await api.get(
+      '/venues/$venueId/availability',
+      query: {'date': _apiDate(day)},
+    ),
+  );
+  return [
+    for (final item in _asList(data['courts']))
+      CourtDay(ApiCourt.fromJson(_asMap(item)), _asInt(_asMap(item)['rate']), [
+        for (final h in _asList(_asMap(item)['hours']))
+          HourCell(
+            _asInt(_asMap(h)['hour']),
+            _asDate(_asMap(h)['start']),
+            _hourState(_asMap(h)['status'] as String?),
+          ),
+      ]),
+  ];
+}
+
+/// Grid jam venue milik akun ini untuk satu tanggal (kunci = tanggal tanpa jam).
+/// Dimuat ulang setiap jadwal venue berubah (refresh, tutup/buka jam).
+final venueDayProvider = FutureProvider.autoDispose
+    .family<List<CourtDay>, DateTime>((ref, day) async {
+      ref.watch(venueSlotsProvider);
+      final id = ref.read(venueSlotsProvider.notifier).venueId;
+      if (id == null) return const [];
+      return loadAvailability(id, day);
+    });
+
+DateTime dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
 final venueSlotsProvider =
     NotifierProvider<VenueSlotsNotifier, List<VenueSlot>>(
