@@ -3,6 +3,7 @@ import {
   createCourtSchema,
   createSlotSchema,
   createVenueSchema,
+  patchVenueSchema,
   idSchema,
   patchCourtSchema,
   patchSlotSchema,
@@ -16,6 +17,11 @@ export async function listVenues(req, res) {
 
 export async function createVenue(req, res) {
   res.status(201).json(await service.createVenue(req.user.id, createVenueSchema.parse(req.body)));
+}
+
+export async function updateVenue(req, res) {
+  const { id } = idSchema.parse(req.params);
+  res.json(await service.updateVenue(req.user.id, id, patchVenueSchema.parse(req.body)));
 }
 
 export async function createCourt(req, res) {

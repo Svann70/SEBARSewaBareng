@@ -6,6 +6,7 @@ export const venueAdminRoutes = Router();
 
 venueAdminRoutes.get('/venues', controller.listVenues);
 venueAdminRoutes.post('/venues', controller.createVenue);
+venueAdminRoutes.patch('/venues/:id', controller.updateVenue);
 venueAdminRoutes.post('/courts', controller.createCourt);
 venueAdminRoutes.patch('/courts/:id', controller.updateCourt);
 venueAdminRoutes.get('/slots', controller.listSlots);

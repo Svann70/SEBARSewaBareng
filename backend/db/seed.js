@@ -62,10 +62,10 @@ await tx(async (c) => {
     // Two-hour slots at 08:00, 16:00 and 20:00 WIB for the next 7 days.
     await c.query(
       `INSERT INTO court_slots (court_id, start_at, end_at, price)
-       SELECT $1, t, t + interval '2 hours', (CASE WHEN extract(dow from t) IN (0, 6) THEN $3 ELSE $2 END)
+       SELECT $1, t, t + interval '2 hours', (CASE WHEN extract(isodow FROM (t AT TIME ZONE 'Asia/Jakarta')) >= 6 THEN $3::numeric ELSE $2::numeric END)
          FROM generate_series(1, 7) AS d, unnest(ARRAY[8, 16, 20]) AS h,
               LATERAL (SELECT (((now() AT TIME ZONE 'Asia/Jakarta')::date + d) + make_interval(hours => h)) AT TIME ZONE 'Asia/Jakarta' AS t) x
-       ON CONFLICT (court_id, start_at) DO NOTHING`,
+       ON CONFLICT (court_id, start_at) WHERE NOT released DO NOTHING`,
       [court.id, price * 2, weekend * 2],
     );
   }
