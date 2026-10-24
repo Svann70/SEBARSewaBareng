@@ -970,6 +970,7 @@ CREATE TABLE public.courts (
     name character varying(60) NOT NULL,
     sport_type public.sport_type NOT NULL,
     price_per_hour numeric(12,2) NOT NULL,
+    price_weekend numeric(12,2),
     capacity smallint NOT NULL,
     status public.court_status DEFAULT 'ACTIVE'::public.court_status NOT NULL,
     CONSTRAINT courts_capacity_check CHECK (((capacity >= 2) AND (capacity <= 30))),

@@ -16,6 +16,7 @@ import 'features/lobby/lobby_detail_screen.dart';
 import 'features/profile/edit_profile_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/rooms/rooms_screen.dart';
+import 'features/venue/venue_courts.dart';
 import 'features/venue/venue_shell.dart';
 import 'features/venue/venue_tabs.dart';
 import 'features/wallet/wallet_screen.dart';
@@ -74,6 +75,12 @@ final _routes = <RouteBase>[
   GoRoute(
     path: '/venue/analytics',
     builder: (_, _) => const VenueAnalyticsScreen(),
+  ),
+  GoRoute(
+    path: '/venue/courts',
+    builder: (_, s) => VenueCourtsScreen(
+      initialCourt: s.extra is int ? s.extra! as int : 0,
+    ),
   ),
   GoRoute(path: '/community', builder: (_, _) => const CommunityScreen()),
 ];
