@@ -48,9 +48,9 @@ class _VenueShellState extends State<VenueShell> {
         index: _index,
         items: DockNav.venueDock,
         centerIcon: Icons.add,
-        centerLabel: 'Buka slot',
+        centerLabel: 'Kelola lapangan',
         onSelect: (i) => setState(() => _index = i),
-        onCreate: () => showAddSlotSheet(context),
+        onCreate: () => context.push('/venue/courts'),
       ),
     );
   }
@@ -75,7 +75,6 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
           (s) => s.status == SlotStatus.booked || s.status == SlotStatus.lobby,
         )
         .length;
-    final open = today.where((s) => s.status == SlotStatus.open).length;
     final courts = _courtStats(_period == 'Pekan' ? today : _rollup(all, 7));
 
     return ListView(
@@ -180,11 +179,11 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
           children: [
             Expanded(
               child: _ActionTile(
-                icon: Icons.event_available,
-                label: 'Buka slot',
-                detail: '$open kosong hari ini',
+                icon: Icons.stadium_outlined,
+                label: 'Kelola lapangan',
+                detail: 'Foto, nama, tarif',
                 tint: C.primary,
-                onTap: () => showAddSlotSheet(context),
+                onTap: () => context.push('/venue/courts'),
               ),
             ),
             const SizedBox(width: 10),
@@ -246,7 +245,7 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
           ),
         if (today.isEmpty)
           Text(
-            'Belum ada slot hari ini. Buka slot dari tombol +.',
+            'Belum ada slot hari ini.',
             style: T.small,
           ),
         const SizedBox(height: 14),

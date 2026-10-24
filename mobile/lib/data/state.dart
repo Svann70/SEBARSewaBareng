@@ -324,6 +324,7 @@ class ApiCourt {
     required this.sport,
     required this.pricePerHour,
     required this.capacity,
+    this.priceWeekend,
   });
 
   final String id;
@@ -332,13 +333,26 @@ class ApiCourt {
   final int pricePerHour;
   final int capacity;
 
+  /// Tarif Sabtu–Minggu; null = sama dengan `pricePerHour`.
+  final int? priceWeekend;
+
   factory ApiCourt.fromJson(Map<String, dynamic> json) => ApiCourt(
     id: json['id'] as String? ?? '',
     name: json['name'] as String? ?? 'Lapangan',
     sport: sportFromApi(json['sport'] as String?),
     pricePerHour: _asInt(json['pricePerHour']),
     capacity: _asInt(json['capacity'], 12),
+    priceWeekend: json['priceWeekend'] == null
+        ? null
+        : _asInt(json['priceWeekend']),
   );
+
+  /// Tarif per jam untuk slot yang mulai [start] (hari WIB Sabtu/Minggu = weekend).
+  int rateFor(DateTime start) {
+    final weekend =
+        start.weekday == DateTime.saturday || start.weekday == DateTime.sunday;
+    return weekend ? (priceWeekend ?? pricePerHour) : pricePerHour;
+  }
 }
 
 class ApiVenue {
@@ -375,6 +389,9 @@ class ApiSlot {
     required this.price,
     required this.status,
     this.lobbyId,
+    this.hostName,
+    this.joined,
+    this.quota,
   });
 
   final String id;
@@ -386,6 +403,19 @@ class ApiSlot {
   final int price;
   final String status;
   final String? lobbyId;
+  final String? hostName;
+  final int? joined;
+  final int? quota;
+
+  /// Label tracking POV venue: 'Raka · 8/10 pemain'. Null bila slot kosong.
+  String? get bookingLabel {
+    final host = hostName?.trim();
+    if (host == null || host.isEmpty) {
+      return lobbyId == null ? null : 'Room aktif';
+    }
+    if (joined != null && quota != null) return '$host · $joined/$quota pemain';
+    return host;
+  }
 
   bool get isOpen => status == 'OPEN' && lobbyId == null;
 
@@ -399,6 +429,9 @@ class ApiSlot {
     price: _asInt(json['price']),
     status: json['status'] as String? ?? 'OPEN',
     lobbyId: json['lobbyId'] as String?,
+    hostName: json['hostName'] as String?,
+    joined: (json['joined'] as num?)?.toInt(),
+    quota: (json['quota'] as num?)?.toInt(),
   );
 }
 
@@ -760,7 +793,7 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
       end: slot.end,
       price: slot.price,
       status: status,
-      guest: slot.lobbyId == null ? null : 'Room aktif',
+      guest: slot.bookingLabel,
       courtId: slot.courtId,
       courtName: slot.courtName,
     );
@@ -799,30 +832,6 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     }
   }
 
-  /// Buka slot dari tarif per jam lapangan: `price` = tarif × durasi.
-  Future<String?> addRemote({
-    required String courtId,
-    required DateTime start,
-    required Duration duration,
-    required int pricePerHour,
-  }) async {
-    try {
-      await api.post(
-        '/venue/slots',
-        body: {
-          'courtId': courtId,
-          'startAt': start.toUtc().toIso8601String(),
-          'endAt': start.add(duration).toUtc().toIso8601String(),
-          'price': pricePerHour * duration.inHours,
-        },
-      );
-      await refresh();
-      return null;
-    } catch (error) {
-      return apiMessage(error);
-    }
-  }
-
   Future<String?> setStatusRemote(String id, SlotStatus status) async {
     try {
       await api.patch(
@@ -848,11 +857,15 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
 
   /// Tarif per jam lapangan — sumber harga semua slot baru di lapangan itu.
   /// Slot yang sudah ada menyimpan harganya sendiri.
-  Future<String?> setCourtPriceRemote(String courtId, int pricePerHour) async {
+  Future<String?> setCourtPriceRemote(
+    String courtId,
+    int pricePerHour, {
+    int? priceWeekend,
+  }) async {
     try {
       await api.patch(
         '/venue/courts/$courtId',
-        body: {'pricePerHour': pricePerHour},
+        body: {'pricePerHour': pricePerHour, 'priceWeekend': ?priceWeekend},
       );
       await refresh();
       return null;
@@ -865,6 +878,7 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     required String name,
     required Sport sport,
     required int pricePerHour,
+    int? priceWeekend,
     required int capacity,
   }) async {
     final id = _venueId;
@@ -877,6 +891,7 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
           'name': name,
           'sport': sportToApi(sport),
           'pricePerHour': pricePerHour,
+          'priceWeekend': ?priceWeekend,
           'capacity': capacity,
         },
       );

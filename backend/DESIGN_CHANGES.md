@@ -34,14 +34,16 @@ CREATE TABLE venue_photos (
 ### 1.2 `courts`
 | Perubahan | Alasan |
 |---|---|
-| `weekend_price_per_hour numeric(12,2)` (nullable, default = `price_per_hour`) | Venue · Lapangan & foto: **Weekday /jam** dan **Weekend /jam** |
+| ~~`weekend_price_per_hour`~~ → **`price_weekend numeric(12,2)` (nullable, `NULL` = sama dengan `price_per_hour`)** — ✅ selesai: migrasi `db/supabase/002_court_price_weekend.sql`, disertakan di semua payload courts (`priceWeekend`, sisi user maupun admin), `POST /venue/courts` + `PATCH /venue/courts/:id` (`priceWeekend`), seed memakai harga weekend | Venue · Lapangan & foto: **Weekday /jam** dan **Weekend /jam** |
 | tabel `court_photos (id, court_id, url, sort, created_at)` | Venue · Jadwal: tombol **Ganti foto** di header tiap lapangan & sheet detail slot (venue pilih foto bawaan / tempel tautan; foto sama dipakai kartu room pemain). UI memakai **satu foto utama** per court → ambil `sort = 0` sebagai cover, atau tambah kolom `courts.cover_photo_url text` |
 | `courts.capacity` sudah ada (2–30) | Dipakai "8 orang" |
 
-`price_per_hour` tetap harga weekday. Saat `POST /venue/slots`, server memilih
-weekend rate bila `start_at` jatuh Sabtu/Minggu (zona waktu venue, default
-`Asia/Jakarta`) dan menyimpannya sebagai snapshot `court_slots.price` — room
-berjalan tetap memakai harga lama sesuai teks desain.
+`price_per_hour` tetap harga weekday. Pemilihan harga weekend **saat ini
+dihitung client (mobile `ApiCourt.rateFor(start)`, Sabtu/Minggu)** lalu dikirim
+sebagai `price` di `POST /venue/slots` — snapshot di `court_slots.price`; room
+berjalan tetap memakai harga lama sesuai teks desain. Gap tersisa di server:
+validasi `price` (≤ tarif lapangan × durasi) dan pemilihan harga weekend
+sisi server bila slot bisa dibuat tanpa app.
 
 ### 1.3 `lobbies`
 | Kolom baru | Tipe | Alasan |
@@ -139,7 +141,7 @@ GROUP BY 1, 2;
 | `DELETE /venue/venues/:id/photos/:photoId` | — | hapus foto |
 | `POST /venue/courts/:id/photos` | `{ url }` | tombol **Ganti foto** lapangan (header tab Jadwal & detail slot) |
 | `DELETE /venue/courts/:id/photos/:photoId` | — | hapus foto lapangan |
-| `PATCH /venue/courts/:id` (tambah field) | `weekendPricePerHour` | form **Weekday / Weekend** di Lapangan & foto |
+| `PATCH /venue/courts/:id` (tambah field) | `weekendPricePerHour` | form **Weekday / Weekend** di Lapangan & foto — ✅ selesai, nama field `priceWeekend` (opsional; tanpa kadar sama sekali = harga weekday tetap) |
 | `DELETE /venue/slots/:id` | — | hapus slot yang belum punya lobby (`409` bila sudah dipakai) |
 | `GET /venue/analytics?range=7d\|month\|3m` | — | `{ revenue, bookings, occupancyPct, perCourt[], peakHours[], payoutReady }` |
 | `GET /venue/payouts` | — | daftar payout + saldo siap cair |

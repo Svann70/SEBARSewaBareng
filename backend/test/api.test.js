@@ -80,7 +80,7 @@ async function venueWithCourt() {
     assert.equal(r.status, 201, JSON.stringify(r.body));
     return r.body;
   };
-  return { admin, courtId: c.rows[0].id, slot };
+  return { admin, venueId: v.rows[0].id, courtId: c.rows[0].id, slot };
 }
 
 async function createLobby(host, slotId, quota, extra = {}) {
@@ -264,6 +264,14 @@ describe('venue slots vs lobbies', { skip }, () => {
     const dayAfter = new Date(Date.parse(wibDate) + 86400_000).toISOString().slice(0, 10);
     const miss = await api('GET', `/lobbies?date=${dayAfter}`, { token: p.token });
     assert.ok(!miss.body.items.some((l) => l.id === lobby.id));
+
+    // POV venue: jadwal menampilkan siapa yang booking + jumlah pemain.
+    const venueSlots = await api('GET', `/venue/slots?date=${wibDate}`, { token: v.admin.token });
+    const row = venueSlots.body.items.find((s) => s.id === slot.id);
+    assert.ok(row.hostName, 'host name present');
+    assert.equal(row.joined, 1);
+    assert.equal(row.quota, 4);
+    assert.equal((await api('GET', `/venues/${v.venueId}/slots?date=${wibDate}`, { token: p.token })).body.items[0].hostName, undefined);
   });
 });
 

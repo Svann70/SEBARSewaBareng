@@ -9,7 +9,8 @@ export async function listVenues(ownerId) {
   const { rows } = await query(
     `SELECT v.id, v.name, v.city, v.status,
             COALESCE(json_agg(json_build_object('id', c.id, 'name', c.name, 'sport', c.sport_type,
-                     'pricePerHour', c.price_per_hour, 'capacity', c.capacity, 'status', c.status) ORDER BY c.name)
+                     'pricePerHour', c.price_per_hour, 'priceWeekend', c.price_weekend,
+                     'capacity', c.capacity, 'status', c.status) ORDER BY c.name)
                      FILTER (WHERE c.id IS NOT NULL), '[]') AS courts
        FROM venues v LEFT JOIN courts c ON c.venue_id = v.id
       WHERE v.owner_id = $1 GROUP BY v.id ORDER BY v.name`,
@@ -28,29 +29,31 @@ export async function listSlots(ownerId, { date, venueId }) {
 }
 
 const COURT_RETURNING = `id, venue_id AS "venueId", name, sport_type AS sport,
-  price_per_hour AS "pricePerHour", capacity, status`;
+  price_per_hour AS "pricePerHour", price_weekend AS "priceWeekend", capacity, status`;
 
-// Court price lives here (courts.price_per_hour): every slot inherits it at creation.
-export async function createCourt(ownerId, { venueId, name, sport, pricePerHour, capacity }) {
+// Court price lives here (courts.price_per_hour / price_weekend): every slot inherits it at creation.
+// price_weekend NULL = sama dengan weekday.
+export async function createCourt(ownerId, { venueId, name, sport, pricePerHour, priceWeekend, capacity }) {
   const owned = await query('SELECT id FROM venues WHERE id = $1 AND owner_id = $2', [venueId, ownerId]);
   if (!owned.rows[0]) throw new AppError(404, 'NOT_FOUND', 'Venue tidak ditemukan.');
   const { rows } = await query(
-    `INSERT INTO courts (venue_id, name, sport_type, price_per_hour, capacity)
-     VALUES ($1, $2, $3, $4, $5) RETURNING ${COURT_RETURNING}`,
-    [venueId, name, sport, pricePerHour, capacity],
+    `INSERT INTO courts (venue_id, name, sport_type, price_per_hour, price_weekend, capacity)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${COURT_RETURNING}`,
+    [venueId, name, sport, pricePerHour, priceWeekend ?? null, capacity],
   );
   return rows[0];
 }
 
-export async function updateCourt(ownerId, courtId, { name, pricePerHour, capacity, status }) {
+export async function updateCourt(ownerId, courtId, { name, pricePerHour, priceWeekend, capacity, status }) {
   const { rows } = await query(
     `UPDATE courts c SET name = COALESCE($3, c.name), price_per_hour = COALESCE($4::numeric, c.price_per_hour),
-            capacity = COALESCE($5::smallint, c.capacity), status = COALESCE($6::court_status, c.status)
+            price_weekend = COALESCE($5::numeric, c.price_weekend),
+            capacity = COALESCE($6::smallint, c.capacity), status = COALESCE($7::court_status, c.status)
        FROM venues v
       WHERE c.venue_id = v.id AND c.id = $1 AND v.owner_id = $2
       RETURNING c.id, c.venue_id AS "venueId", c.name, c.sport_type AS sport,
-                c.price_per_hour AS "pricePerHour", c.capacity, c.status`,
-    [courtId, ownerId, name ?? null, pricePerHour ?? null, capacity ?? null, status ?? null],
+                c.price_per_hour AS "pricePerHour", c.price_weekend AS "priceWeekend", c.capacity, c.status`,
+    [courtId, ownerId, name ?? null, pricePerHour ?? null, priceWeekend ?? null, capacity ?? null, status ?? null],
   );
   if (!rows[0]) throw new AppError(404, 'NOT_FOUND', 'Lapangan tidak ditemukan.');
   return rows[0];

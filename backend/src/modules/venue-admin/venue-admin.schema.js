@@ -19,6 +19,7 @@ export const createCourtSchema = z.object({
   name,
   sport: z.enum(SPORTS),
   pricePerHour: price,
+  priceWeekend: price.optional(),
   capacity,
 });
 
@@ -26,6 +27,7 @@ export const patchCourtSchema = z
   .object({
     name: name.optional(),
     pricePerHour: price.optional(),
+    priceWeekend: price.optional(),
     capacity: capacity.optional(),
     status: z.enum(['ACTIVE', 'MAINTENANCE']).optional(),
   })

@@ -21,13 +21,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Buka slot'), findsOneWidget);
+    expect(find.text('Kelola lapangan'), findsWidgets);
 
     await tester.tap(find.text('Jadwal'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Tambah'), findsOneWidget);
+    expect(find.text('Lapangan'), findsWidgets);
   });
 
   testWidgets('jadwal tab standalone 360x740', (tester) async {

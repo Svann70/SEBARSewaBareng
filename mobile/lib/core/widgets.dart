@@ -611,6 +611,7 @@ class LabeledField extends StatelessWidget {
     this.obscure = false,
     this.keyboard,
     this.prefixIcon,
+    this.prefixText,
     this.onChanged,
     this.textCapitalization = TextCapitalization.none,
   });
@@ -621,6 +622,7 @@ class LabeledField extends StatelessWidget {
   final bool obscure;
   final TextInputType? keyboard;
   final IconData? prefixIcon;
+  final String? prefixText;
   final ValueChanged<String>? onChanged;
   final TextCapitalization textCapitalization;
 
@@ -644,6 +646,7 @@ class LabeledField extends StatelessWidget {
           ),
           decoration: InputDecoration(
             hintText: hint,
+            prefixText: prefixText,
             prefixIcon: prefixIcon == null
                 ? null
                 : Icon(prefixIcon, size: 19, color: C.muted),
@@ -1552,9 +1555,25 @@ class CourtPhotoNotifier extends Notifier<Map<String, String>> {
   void setPhoto(String key, String url) => state = {...state, key: url};
 }
 
+class CourtGalleryNotifier extends Notifier<Map<String, List<String>>> {
+  @override
+  Map<String, List<String>> build() => const {};
+
+  /// Tambah foto ke galeri lapangan dan jadikan foto utama.
+  void addPhoto(String key, String url) {
+    state = {...state, key: [...state[key] ?? const [], url]};
+    ref.read(courtPhotosProvider.notifier).setPhoto(key, url);
+  }
+}
+
 final courtPhotosProvider =
     NotifierProvider<CourtPhotoNotifier, Map<String, String>>(
       CourtPhotoNotifier.new,
+    );
+
+final courtGalleriesProvider =
+    NotifierProvider<CourtGalleryNotifier, Map<String, List<String>>>(
+      CourtGalleryNotifier.new,
     );
 
 /// Kunci foto: venue + lapangan, huruf kecil.

@@ -6,7 +6,7 @@ export async function list({ city, sport }) {
   const { rows } = await query(
     `SELECT v.id, v.name, v.address, v.city, v.description, v.photo_url,
             json_agg(json_build_object('id', c.id, 'name', c.name, 'sport', c.sport_type,
-                     'pricePerHour', c.price_per_hour, 'capacity', c.capacity) ORDER BY c.name) AS courts
+                     'pricePerHour', c.price_per_hour, 'priceWeekend', c.price_weekend,'capacity', c.capacity) ORDER BY c.name) AS courts
        FROM venues v JOIN courts c ON c.venue_id = v.id AND c.status = 'ACTIVE'
       WHERE v.status = 'ACTIVE' AND ($1::text IS NULL OR lower(v.city) = lower($1)) AND ($2::sport_type IS NULL OR c.sport_type = $2)
       GROUP BY v.id ORDER BY v.name`,
