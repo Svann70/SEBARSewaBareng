@@ -1,6 +1,7 @@
 import { query, tx } from '../../db/pool.js';
 import { AppError } from '../../lib/errors.js';
 import { onDateWib } from '../../lib/sql.js';
+import { coverPhoto } from '../venues/courts.shared.js';
 import { clearFreeSlots } from '../venues/slots.shared.js';
 import { cancelLobby, JOIN_CUTOFF_HOURS, joinLobby, leaveLobby } from './membership.service.js';
 
@@ -8,7 +9,8 @@ export const PAGE_SIZE = 20;
 const MAX_ACTIVE_HOSTED = 3;
 
 const LOBBY_SELECT = `
-  SELECT l.*, s.start_at, s.end_at, c.name AS court_name, COALESCE(l.sport_type, c.sport_type) AS sport_type, v.id AS venue_id, v.name AS venue_name, v.city,
+  SELECT l.*, s.start_at, s.end_at, c.name AS court_name, COALESCE(l.sport_type, c.sport_type) AS sport_type,
+         ${coverPhoto('c')} AS court_photo, v.id AS venue_id, v.name AS venue_name, v.city,
          (SELECT count(*)::int FROM lobby_members m WHERE m.lobby_id = l.id AND m.status IN ('HOLDING', 'CONFIRMED')) AS joined
     FROM lobbies l
     JOIN court_slots s ON s.id = l.slot_id

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../app.dart';
 import '../../core/theme.dart';
@@ -238,6 +239,16 @@ class _CourtFormScreenState extends ConsumerState<CourtFormScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 22),
+                  const Text('Foto lapangan', style: T.label),
+                  const SizedBox(height: 4),
+                  if (_editing)
+                    _CourtPhotos(courtId: widget.courtId!)
+                  else
+                    Text(
+                      'Foto bisa ditambah setelah lapangan disimpan: buka menu ⋮ → Edit.',
+                      style: T.caption,
+                    ),
                   if (_error != null) ...[
                     const SizedBox(height: 14),
                     Text(_error!, style: T.small.copyWith(color: C.danger)),
@@ -370,6 +381,175 @@ class _HourPicker extends StatelessWidget {
             if (h != null) onChanged(h);
           },
         ),
+      ],
+    );
+  }
+}
+
+/// Foto lapangan di Supabase Storage (lewat backend). Foto pertama = sampul
+/// yang dilihat pemain di detail room.
+class _CourtPhotos extends ConsumerStatefulWidget {
+  const _CourtPhotos({required this.courtId});
+
+  final String courtId;
+
+  @override
+  ConsumerState<_CourtPhotos> createState() => _CourtPhotosState();
+}
+
+class _CourtPhotosState extends ConsumerState<_CourtPhotos> {
+  static const _max = 6;
+  bool _busy = false;
+  String? _error;
+
+  List<CourtPhotoInfo> get _photos {
+    for (final c in ref.read(venueSlotsProvider.notifier).courts) {
+      if (c.id == widget.courtId) return c.photos;
+    }
+    return const [];
+  }
+
+  Future<void> _add() async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+      imageQuality: 85,
+    );
+    if (file == null || !mounted) return;
+    final bytes = await file.readAsBytes();
+    if (bytes.length > 5 * 1024 * 1024) {
+      setState(() => _error = 'Foto maksimal 5 MB.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final error = await ref
+        .read(venueSlotsProvider.notifier)
+        // Jenis foto dicek server dari isi berkas, bukan dari header ini.
+        .addCourtPhoto(widget.courtId, bytes, 'application/octet-stream');
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        _error = error;
+      });
+    }
+  }
+
+  Future<void> _delete(CourtPhotoInfo photo) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final error = await ref
+        .read(venueSlotsProvider.notifier)
+        .deleteCourtPhoto(widget.courtId, photo.id);
+    if (mounted) {
+      setState(() {
+        _busy = false;
+        _error = error;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(venueSlotsProvider);
+    final photos = _photos;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Maksimal $_max foto (JPG/PNG/WEBP, ≤ 5 MB). Foto pertama jadi sampul.',
+          style: T.caption,
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (i, p) in photos.indexed)
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      p.url,
+                      width: 96,
+                      height: 72,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                        width: 96,
+                        height: 72,
+                        color: C.surfaceAlt,
+                        child: const Icon(Icons.broken_image_outlined),
+                      ),
+                    ),
+                  ),
+                  if (i == 0)
+                    const Positioned(
+                      left: 4,
+                      bottom: 4,
+                      child: Pill(
+                        'Sampul',
+                        background: C.primarySoft,
+                        color: C.primaryDeep,
+                      ),
+                    ),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: IconButton(
+                      tooltip: 'Hapus foto',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _busy ? null : () => _delete(p),
+                      icon: const Icon(Icons.cancel, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            if (photos.length < _max)
+              Material(
+                color: C.surface,
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: _busy ? null : _add,
+                  child: Container(
+                    width: 96,
+                    height: 72,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: C.line),
+                    ),
+                    child: _busy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.add_a_photo_outlined,
+                                color: C.primary,
+                              ),
+                              SizedBox(height: 2),
+                              Text('Tambah foto', style: T.caption),
+                            ],
+                          ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 6),
+          Text(_error!, style: T.small.copyWith(color: C.danger)),
+        ],
       ],
     );
   }

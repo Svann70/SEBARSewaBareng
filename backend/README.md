@@ -86,6 +86,12 @@ Room selalu memakai tarif lapangan (weekday/weekend × durasi). Slot `OPEN` tanp
 penanda jam kosong: saat jamnya dipesan, slot itu dihapus (atau `released` bila masih dirujuk room
 lama yang batal/kedaluwarsa). Pemilik menutup jam lewat `POST /venue/slots` dengan `status: BLOCKED`.
 
+Foto lapangan: bucket **publik** di Supabase Storage (`SUPABASE_PHOTO_BUCKET`, default `courts-photos`).
+App mengunggah lewat backend (cek pemilik, jenis, ukuran); backend menulis ke Storage dengan
+`SUPABASE_SERVICE_ROLE_KEY`. Data lapangan (`courts[].photos`) dan room (`court.photoUrl` = foto sampul)
+membawa URL publiknya. Hapus foto = hapus baris + berkasnya. Belum ada endpoint hapus lapangan; kalau nanti
+ditambah, hapus juga berkas `courts/<courtId>/` di bucket (FK cascade hanya menghapus baris DB).
+
 Flag `.env`:
 - `AUTH_RATE_LIMIT` (20/menit/IP untuk register/login, 5× itu untuk refresh/logout) dan `LOGIN_RATE_LIMIT`
   (10 login **gagal**/15 menit per email per IP) → 429 `RATE_LIMITED`. Disimpan di memori proses (cukup untuk
@@ -170,6 +176,8 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | PATCH | `/venue/venues/:id` | VENUE_ADMIN | name?, address?, city?, description? (minimal satu) | 200 venue | 404 bukan milik, 422 |
 | POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sports `[{sport, capacity}]` (atau sport + capacity), pricePerHour (weekday), priceWeekend?, openTime? (`HH:00`, default 06:00), closeTime? (`HH:00`, ≤ 24:00, default 22:00). sport: `BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`/`BASKETBALL`/`TENNIS`/`PADEL` | 201 court | 404 venue bukan milik, 409 nama dobel, 422 |
 | PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, sports? (ganti semua), pricePerHour?, priceWeekend?, capacity?, openTime?, closeTime?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik, 422 jam tutup ≤ jam buka |
+| POST | `/venue/courts/:id/photos` | VENUE_ADMIN | body = berkas foto (JPG/PNG/WEBP, ≤ 5 MB; jenis dicek dari isi berkas). Maks 6 per lapangan | 201 `{id, url, sort}` (url publik Supabase Storage) | 404 bukan milik, 409 sudah 6, 413, 415, 502 storage, 503 storage belum diatur |
+| DELETE | `/venue/courts/:id/photos/:photoId` | VENUE_ADMIN | - | 204 (berkas juga dihapus dari Storage) | 404 |
 | GET | `/venue/slots` | VENUE_ADMIN | date, venueId? | 200 `{items}` | 403 |
 | POST | `/venue/slots` | VENUE_ADMIN | courtId, startAt, endAt, price, status? (`OPEN`/`BLOCKED`; `BLOCKED` = tutup jam itu) | 201 slot | 409 bentrok, 404 bukan milik |
 | PATCH | `/venue/slots/:id` | VENUE_ADMIN | status? (`OPEN`/`BLOCKED`), price? | 200 slot | 409 sudah ada lobby/booking |

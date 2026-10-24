@@ -2,10 +2,12 @@
 // (e.g. a local docker container), never at Supabase production. Data is namespaced per run, not truncated.
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import http from 'node:http';
 import { after, before, describe, test } from 'node:test';
 
 const skip = !process.env.TEST_DATABASE_URL && 'TEST_DATABASE_URL not set';
 let base, server, db, expireStaleLobbies, tx;
+const storage = { calls: [], failNext: false, server: null };
 const run = crypto.randomBytes(4).toString('hex');
 let n = 0;
 
@@ -15,6 +17,21 @@ before(async () => {
   process.env.JWT_SECRET ??= crypto.randomBytes(48).toString('base64url');
   process.env.ALLOW_SANDBOX_TOPUP = '1';
   // Every test request comes from 127.0.0.1; the limiter itself is covered in rate-limit.test.js.
+  // Court photos go to a fake Supabase Storage on localhost, never the real project.
+  storage.server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      storage.calls.push({ method: req.method, url: req.url, auth: req.headers.authorization, type: req.headers['content-type'], body: Buffer.concat(chunks) });
+      res.statusCode = storage.failNext ? 500 : 200;
+      storage.failNext = false;
+      res.end('{}');
+    });
+  }).listen(0);
+  await new Promise((r) => storage.server.once('listening', r));
+  process.env.SUPABASE_URL = `http://127.0.0.1:${storage.server.address().port}`;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key';
+  process.env.SUPABASE_PHOTO_BUCKET = 'courts-photos';
   process.env.AUTH_RATE_LIMIT = '100000';
   process.env.LOGIN_RATE_LIMIT = '100000';
   const { createApp } = await import('../src/app.js');
@@ -29,6 +46,7 @@ before(async () => {
 after(async () => {
   if (skip) return;
   server.close();
+  storage.server.close();
   await db.end();
 });
 
@@ -841,5 +859,77 @@ describe('closing hours (review fix)', { skip }, () => {
     const refused = await close(10);
     assert.equal(refused.status, 409);
     assert.match(refused.body.error.message, /terisi/);
+  });
+});
+
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
+const JPG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(32, 2)]);
+async function upload(token, courtId, bytes, type = 'image/png') {
+  const res = await fetch(`${base}/venue/courts/${courtId}/photos`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': type },
+    body: bytes,
+  });
+  return { status: res.status, body: res.status === 204 ? null : await res.json() };
+}
+
+describe('court photos (Supabase Storage)', { skip }, () => {
+  test('owner uploads photos; players see them on the court and the room cover', async () => {
+    const { admin, venueId, court } = await setupCourt();
+    storage.calls.length = 0;
+    const first = await upload(admin.token, court.id, PNG);
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+    const call = storage.calls[0];
+    assert.equal(call.method, 'POST');
+    assert.match(call.url, new RegExp(`^/storage/v1/object/courts-photos/courts/${court.id}/[0-9a-f-]{36}\\.png$`));
+    assert.equal(call.auth, 'Bearer test-service-key');
+    assert.ok(call.body.equals(PNG));
+    assert.match(first.body.url, /\/storage\/v1\/object\/public\/courts-photos\/courts\//);
+    // Declared type is ignored: a JPEG sent as octet-stream is stored as .jpg.
+    const second = await upload(admin.token, court.id, JPG, 'application/octet-stream');
+    assert.equal(second.status, 201);
+    assert.match(storage.calls[1].url, /\.jpg$/);
+
+    const p = await player(1_000_000);
+    const venues = await api('GET', '/venues', { token: p.token });
+    const photos = venues.body.items.find((v) => v.id === venueId).courts[0].photos;
+    assert.deepEqual(photos.map((x) => x.id), [first.body.id, second.body.id]);
+    const room = await roomAt(p, court.id, wibAt(wibDate(34, false), 10), { sport: 'FUTSAL' });
+    assert.equal(room.status, 201);
+    assert.equal(room.body.court.photoUrl, first.body.url, 'cover = first photo');
+
+    const del = await api('DELETE', `/venue/courts/${court.id}/photos/${first.body.id}`, { token: admin.token });
+    assert.equal(del.status, 204);
+    assert.equal(storage.calls.at(-1).method, 'DELETE');
+    assert.deepEqual(JSON.parse(storage.calls.at(-1).body), { prefixes: [first.body.url.split('/courts-photos/')[1]] });
+    const after = await api('GET', `/lobbies/${room.body.id}`, { token: p.token });
+    assert.equal(after.body.court.photoUrl, second.body.url);
+  });
+
+  test('concurrent uploads never pass the 6-photo cap', async () => {
+    const { admin, court } = await setupCourt();
+    const results = await Promise.all(Array.from({ length: 9 }, () => upload(admin.token, court.id, PNG)));
+    assert.equal(results.filter((r) => r.status === 201).length, 6);
+    assert.ok(results.every((r) => r.status === 201 || r.status === 409));
+    const { rows } = await db.query('SELECT count(*)::int AS n, count(DISTINCT sort)::int AS sorts FROM court_photos WHERE court_id = $1', [court.id]);
+    assert.deepEqual(rows[0], { n: 6, sorts: 6 });
+  });
+
+  test('rejects non-images, other owners, players, too many photos and storage failures', async () => {
+    const { admin, court } = await setupCourt();
+    assert.equal((await upload(admin.token, court.id, Buffer.from('<?php echo 1; ?>              '), 'image/png')).status, 415);
+    assert.equal((await upload(admin.token, court.id, Buffer.from('{"a":1}'), 'application/json')).status, 415);
+    const other = await register('VENUE_ADMIN');
+    assert.equal((await upload(other.token, court.id, PNG)).status, 404);
+    const p = await player();
+    assert.equal((await upload(p.token, court.id, PNG)).status, 403);
+    assert.equal((await upload(admin.token, court.id, Buffer.alloc(6 * 1024 * 1024, 0xff))).status, 413);
+    storage.failNext = true;
+    const failed = await upload(admin.token, court.id, PNG);
+    assert.equal(failed.status, 502);
+    for (let i = 0; i < 6; i++) assert.equal((await upload(admin.token, court.id, PNG)).status, 201);
+    assert.equal((await upload(admin.token, court.id, PNG)).status, 409, 'max 6 photos');
+    const bogus = await api('DELETE', `/venue/courts/${court.id}/photos/${crypto.randomUUID()}`, { token: admin.token });
+    assert.equal(bogus.status, 404);
   });
 });

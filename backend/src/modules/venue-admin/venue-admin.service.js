@@ -1,5 +1,8 @@
 import { query, tx } from '../../db/pool.js';
+import crypto from 'node:crypto';
 import { AppError } from '../../lib/errors.js';
+import { detectImage } from '../../lib/image.js';
+import { deleteObject, publicUrl, storageEnabled, uploadObject } from '../../lib/storage.js';
 import { onDateWib } from '../../lib/sql.js';
 import { courtJson } from '../venues/courts.shared.js';
 import { clearFreeSlots, SLOT_SELECT } from '../venues/slots.shared.js';
@@ -186,4 +189,60 @@ export async function updateSlot(ownerId, slotId, { status, price }) {
     ]);
   });
   return loadSlot(slotId);
+}
+
+// ── Court photos (Supabase Storage) ──────────────────────────────────────────
+
+export const MAX_PHOTOS_PER_COURT = 6;
+
+// Owner check + photo count. `lock` holds the court row so concurrent uploads can't pass the cap together.
+// The count is a separate statement: run after the lock wait, it sees photos committed meanwhile.
+async function photoSlotsLeft(c, ownerId, courtId, lock = false) {
+  const owned = await c.query(
+    `SELECT c.id FROM courts c JOIN venues v ON v.id = c.venue_id
+      WHERE c.id = $1 AND v.owner_id = $2${lock ? ' FOR UPDATE OF c' : ''}`,
+    [courtId, ownerId],
+  );
+  if (!owned.rows[0]) throw new AppError(404, 'NOT_FOUND', 'Lapangan tidak ditemukan.');
+  const { rows } = await c.query('SELECT count(*)::int AS n FROM court_photos WHERE court_id = $1', [courtId]);
+  if (rows[0].n >= MAX_PHOTOS_PER_COURT) {
+    throw new AppError(409, 'CONFLICT', `Maksimal ${MAX_PHOTOS_PER_COURT} foto per lapangan.`);
+  }
+}
+
+export async function addPhoto(ownerId, courtId, body) {
+  if (!storageEnabled()) throw new AppError(503, 'STORAGE_DISABLED', 'Upload foto belum diaktifkan di server.');
+  // Cheap pre-check so a full court costs no upload; the locked re-check below is the real guard.
+  await photoSlotsLeft({ query }, ownerId, courtId);
+  const image = detectImage(body);
+  if (!image) throw new AppError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Foto harus JPG, PNG, atau WEBP.');
+  // Random name: no user input in the object path, and a re-upload never overwrites another photo.
+  const path = `courts/${courtId}/${crypto.randomUUID()}.${image.ext}`;
+  await uploadObject(path, body, image.type);
+  try {
+    return await tx(async (c) => {
+      await photoSlotsLeft(c, ownerId, courtId, true);
+      const { rows } = await c.query(
+        `INSERT INTO court_photos (court_id, path, url, sort)
+         VALUES ($1, $2, $3, (SELECT COALESCE(max(sort) + 1, 0) FROM court_photos WHERE court_id = $1))
+         RETURNING id, url, sort`,
+        [courtId, path, publicUrl(path)],
+      );
+      return rows[0];
+    });
+  } catch (err) {
+    await deleteObject(path);
+    throw err;
+  }
+}
+
+export async function deletePhoto(ownerId, courtId, photoId) {
+  const { rows } = await query(
+    `DELETE FROM court_photos p USING courts c, venues v
+      WHERE p.id = $1 AND p.court_id = $2 AND c.id = p.court_id AND v.id = c.venue_id AND v.owner_id = $3
+      RETURNING p.path`,
+    [photoId, courtId, ownerId],
+  );
+  if (!rows[0]) throw new AppError(404, 'NOT_FOUND', 'Foto tidak ditemukan.');
+  await deleteObject(rows[0].path);
 }

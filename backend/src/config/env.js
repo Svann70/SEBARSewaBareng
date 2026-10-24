@@ -21,6 +21,11 @@ export const config = {
   trustProxy: process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : false,
   // Sandbox top-up mints balance out of nothing: off unless explicitly enabled (dev/demo only).
   allowSandboxTopup: process.env.ALLOW_SANDBOX_TOPUP === '1',
+  // Supabase Storage for court photos. The service role key bypasses RLS: backend only, never the app.
+  // Unset = photo upload disabled (503), everything else works.
+  supabaseUrl: process.env.SUPABASE_URL?.replace(/\/+$/, ''),
+  supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  photoBucket: process.env.SUPABASE_PHOTO_BUCKET ?? 'courts-photos',
 };
 
 if (config.jwtSecret.length < 32) throw new Error('JWT_SECRET must be at least 32 characters');

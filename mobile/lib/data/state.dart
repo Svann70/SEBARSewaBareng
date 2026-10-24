@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/misc.dart' show ProviderOrFamily;
 
 import '../core/money.dart';
 import '../core/theme.dart';
-import '../core/widgets.dart' show courtPhotosProvider;
 import 'api.dart';
 
 enum Sport { badminton, futsal, volley, minisoccer, basketball, tennis, padel }
@@ -270,7 +269,6 @@ final _accountData = <ProviderOrFamily>[
   bookingsProvider,
   filterProvider,
   chatProvider,
-  courtPhotosProvider,
 ];
 
 /// Pesan error yang aman ditampilkan ke pengguna.
@@ -407,6 +405,14 @@ VenueInfo venueByName(String name) =>
 
 /// ── Katalog venue dari API ──────────────────────────────────────────────
 
+/// Foto lapangan di Supabase Storage (url publik).
+class CourtPhotoInfo {
+  const CourtPhotoInfo(this.id, this.url);
+
+  final String id;
+  final String url;
+}
+
 /// Olahraga yang bisa dimainkan di satu lapangan + kapasitas pemainnya.
 class CourtSport {
   const CourtSport(this.sport, this.capacity);
@@ -427,6 +433,7 @@ class ApiCourt {
     this.openHour = 6,
     this.closeHour = 22,
     this.active = true,
+    this.photos = const [],
   });
 
   final String id;
@@ -450,6 +457,9 @@ class ApiCourt {
   /// Mati = tidak tampil ke pemain dan tidak bisa dipesan.
   final bool active;
 
+  /// Urutan pertama = foto sampul di sisi pemain.
+  final List<CourtPhotoInfo> photos;
+
   List<CourtSport> get allSports =>
       sports.isEmpty ? [CourtSport(sport, capacity)] : sports;
 
@@ -472,6 +482,13 @@ class ApiCourt {
     openHour: _hourOf(json['openTime'], 6),
     closeHour: _hourOf(json['closeTime'], 22),
     active: (json['status'] as String? ?? 'ACTIVE') == 'ACTIVE',
+    photos: [
+      for (final item in _asList(json['photos']))
+        CourtPhotoInfo(
+          _asMap(item)['id'] as String? ?? '',
+          _asMap(item)['url'] as String? ?? '',
+        ),
+    ],
   );
 
   /// Tarif per jam untuk slot yang mulai [start] (hari WIB Sabtu/Minggu = weekend).
@@ -869,6 +886,29 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     return _afterWrite(await _reload());
   }
 
+  /// Unggah foto lapangan (dikirim ke backend, backend ke Supabase Storage).
+  Future<String?> addCourtPhoto(
+    String courtId,
+    List<int> bytes,
+    String contentType,
+  ) async {
+    try {
+      await api.postBytes('/venue/courts/$courtId/photos', bytes, contentType);
+    } catch (error) {
+      return apiMessage(error);
+    }
+    return _afterWrite(await _reload());
+  }
+
+  Future<String?> deleteCourtPhoto(String courtId, String photoId) async {
+    try {
+      await api.delete('/venue/courts/$courtId/photos/$photoId');
+    } catch (error) {
+      return apiMessage(error);
+    }
+    return _afterWrite(await _reload());
+  }
+
   /// Aktif = tampil ke pemain dan bisa dipesan. Mati = tersembunyi, riwayat tetap.
   Future<String?> setCourtActive(ApiCourt court, bool active) async {
     try {
@@ -1163,11 +1203,15 @@ class Lobby {
     this.isHost = false,
     this.access = LobbyAccess.open,
     this.secret,
+    this.photoUrl,
   });
 
   final String id;
   final String title;
   final Sport sport;
+
+  /// Foto sampul lapangan; null = belum ada foto.
+  final String? photoUrl;
   final String venue;
   final String city;
   final String court;
@@ -1208,6 +1252,7 @@ class Lobby {
     isHost: isHost,
     access: access,
     secret: secret,
+    photoUrl: photoUrl,
   );
 }
 
@@ -1698,6 +1743,7 @@ Lobby lobbyFromApi(Map<String, dynamic> json, {List<Member>? members}) {
         [for (var i = 0; i < joined; i++) Member(name: 'Peserta ${i + 1}')],
     status: _lobbyStatusFromApi(json['status'] as String?),
     isHost: json['hostId'] == api.userId,
+    photoUrl: _asMap(json['court'])['photoUrl'] as String?,
   );
 }
 

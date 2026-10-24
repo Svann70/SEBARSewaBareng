@@ -20,3 +20,4 @@ export * from "./lobbies.js";
 export * from "./lobby-members.js";
 export * from "./bookings.js";
 export * from "./checkins.js";
+export * from "./court-photos.js";
