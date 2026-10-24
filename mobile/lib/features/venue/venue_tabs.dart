@@ -19,15 +19,34 @@ class VenueScheduleTab extends ConsumerStatefulWidget {
 class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
   int _day = 0;
   int _court = 0; // 0 = semua
+  bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Refresh awal saat login bisa gagal dan sebelumnya tidak pernah
+    // dicoba ulang; muat ulang sendiri supaya tab ini selalu bisa dipakai
+    // tanpa harus logout-login.
+    Future.microtask(() {
+      if (!ref.read(venueSlotsProvider.notifier).hasVenue) _refresh();
+    });
+  }
+
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    setState(() => _refreshing = true);
+    await ref.read(venueSlotsProvider.notifier).refresh();
+    if (mounted) setState(() => _refreshing = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     final all = ref.watch(venueSlotsProvider);
     final notifier = ref.read(venueSlotsProvider.notifier);
     final venues = notifier.venues;
-    final courtCount = notifier.courts.isEmpty
-        ? venueProfile.courts
-        : notifier.courts.length;
+    final hasVenue = notifier.hasVenue;
+    final courts = hasVenue ? notifier.courts : const <ApiCourt>[];
+    final courtCount = courts.length;
     final day = DateTime.now().add(Duration(days: _day));
     final slots = slotsOn(
       all,
@@ -44,142 +63,259 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
         .where((s) => s.status != SlotStatus.closed)
         .fold<int>(0, (sum, s) => sum + s.price);
 
-    return ListView(
-      padding: kScreenPad,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    venueProfile.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.4,
-                      color: C.ink,
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: kScreenPad,
+        children: [
+          if (!hasVenue) ..._loadBanner(notifier),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hasVenue
+                          ? venueProfile.name
+                          : _refreshing
+                          ? 'Memuat data venue…'
+                          : notifier.missingVenue
+                          ? 'Belum ada venue'
+                          : 'Data venue belum dimuat',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                        color: C.ink,
+                      ),
                     ),
-                  ),
-                  Text(
-                    '${formatDate(day)} · '
-                    '${_court == 0 ? '$courtCount lapangan' : 'Lapangan $_court'}',
-                    style: T.small,
-                  ),
+                    Text(
+                      hasVenue
+                          ? '${formatDate(day)} · '
+                                '${_court == 0 ? '$courtCount lapangan' : 'Lapangan $_court'}'
+                          : notifier.missingVenue
+                          ? 'Buat venue dulu untuk mulai'
+                          : 'Tarik layar untuk memuat ulang',
+                      style: T.small,
+                    ),
+                  ],
+                ),
+              ),
+              GhostButton(
+                label: 'Tambah',
+                icon: Icons.add,
+                height: 38,
+                // Slot ditambahkan untuk hari yang sedang dilihat; hari lain
+                // lewat tombol + di dock yang punya pemilih tanggal.
+                onPressed: () => showAddSlotSheet(context, day: day),
+              ),
+            ],
+          ),
+          if (venues.length > 1) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 32,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  for (final v in venues)
+                    _CourtChip(
+                      label: v.name,
+                      selected: v.id == notifier.venueId,
+                      onTap: () => notifier.selectVenue(v.id),
+                    ),
                 ],
               ),
             ),
-            GhostButton(
-              label: 'Tambah',
-              icon: Icons.add,
-              height: 38,
-              onPressed: () => showAddSlotSheet(context),
-            ),
           ],
-        ),
-        if (venues.length > 1) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
+          _DayStrip(selected: _day, onPick: (d) => setState(() => _day = d)),
+          const SizedBox(height: 12),
+          SurfaceCard(
+            radius: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _Stat(
+                    value: '$booked',
+                    label: 'Terisi',
+                    color: C.ink,
+                  ),
+                ),
+                _VLine(),
+                Expanded(
+                  child: _Stat(
+                    value: '$open',
+                    label: 'Kosong',
+                    color: C.primary,
+                  ),
+                ),
+                _VLine(),
+                Expanded(
+                  child: _Stat(
+                    value: rupiah(estimate),
+                    label: 'Potensi',
+                    color: C.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           SizedBox(
             height: 32,
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
-                for (final v in venues)
+                _CourtChip(
+                  label: 'Semua',
+                  selected: _court == 0,
+                  onTap: () => setState(() => _court = 0),
+                ),
+                for (var c = 1; c <= courtCount; c++)
                   _CourtChip(
-                    label: v.name,
-                    selected: v.id == notifier.venueId,
-                    onTap: () => notifier.selectVenue(v.id),
+                    label: courts[c - 1].name,
+                    selected: _court == c,
+                    onTap: () => setState(() => _court = c),
                   ),
               ],
             ),
           ),
-        ],
-        const SizedBox(height: 14),
-        _DayStrip(selected: _day, onPick: (d) => setState(() => _day = d)),
-        const SizedBox(height: 12),
-        SurfaceCard(
-          radius: 18,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: _Stat(value: '$booked', label: 'Terisi', color: C.ink),
+          const SizedBox(height: 12),
+          if (slots.isEmpty)
+            EmptyState(
+              icon: Icons.event_busy_outlined,
+              title: 'Belum ada slot',
+              message:
+                  'Buka slot untuk tanggal ini supaya pemain bisa booking.',
+              action: GhostButton(
+                label: 'Tambah slot',
+                icon: Icons.add,
+                onPressed: () => showAddSlotSheet(context, day: day),
               ),
-              _VLine(),
-              Expanded(
-                child: _Stat(value: '$open', label: 'Kosong', color: C.primary),
-              ),
-              _VLine(),
-              Expanded(
-                child: _Stat(
-                  value: rupiah(estimate),
-                  label: 'Potensi',
-                  color: C.primary,
+            )
+          else
+            for (var c = 1; c <= courtCount; c++)
+              if (_court == 0 || _court == c)
+                ..._courtSection(slots, c, courts[c - 1].name),
+          const SizedBox(height: 6),
+          SurfaceCard(
+            radius: 18,
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: C.muted),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    'Slot terisi tidak bisa dihapus. Tutup slot hanya untuk yang '
+                    'masih kosong.',
+                    style: T.small,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 32,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              _CourtChip(
-                label: 'Semua',
-                selected: _court == 0,
-                onTap: () => setState(() => _court = 0),
-              ),
-              for (var c = 1; c <= courtCount; c++)
-                _CourtChip(
-                  label: 'Lapangan $c',
-                  selected: _court == c,
-                  onTap: () => setState(() => _court = c),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (slots.isEmpty)
-          EmptyState(
-            icon: Icons.event_busy_outlined,
-            title: 'Belum ada slot',
-            message: 'Buka slot untuk tanggal ini supaya pemain bisa booking.',
-            action: GhostButton(
-              label: 'Tambah slot',
-              icon: Icons.add,
-              onPressed: () => showAddSlotSheet(context, day: day),
+              ],
             ),
-          )
-        else
-          for (var c = 1; c <= courtCount; c++)
-            if (_court == 0 || _court == c) ..._courtSection(slots, c),
-        const SizedBox(height: 6),
-        SurfaceCard(
-          radius: 18,
-          child: Row(
-            children: [
-              const Icon(Icons.info_outline, size: 16, color: C.muted),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  'Slot terisi tidak bisa dihapus. Tutup slot hanya untuk yang '
-                  'masih kosong.',
-                  style: T.small,
-                ),
-              ),
-            ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  List<Widget> _courtSection(List<VenueSlot> slots, int court) {
+  /// Banner saat venue belum termuat: "buat venue" untuk akun tanpa venue,
+  /// spinner saat memuat, pesan + tombol Muat ulang saat gagal.
+  List<Widget> _loadBanner(VenueSlotsNotifier notifier) {
+    // Server menjawab tapi akun ini tidak punya venue — muat ulang tidak
+    // akan mengubah apa pun, tawarkan membuat venue.
+    if (notifier.missingVenue) {
+      return [
+        SurfaceCard(
+          radius: 18,
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.storefront_outlined,
+                size: 20,
+                color: C.primary,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Akun venue ini belum punya venue. Buat dulu untuk menambah '
+                  'lapangan dan slot.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: C.ink,
+                  ),
+                ),
+              ),
+              GhostButton(
+                label: 'Buat venue',
+                icon: Icons.add,
+                height: 34,
+                onPressed: () => showCreateVenueSheet(context, ref),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+      ];
+    }
+    final busy = _refreshing || notifier.isLoading;
+    return [
+      SurfaceCard(
+        radius: 18,
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            if (busy)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              const Icon(Icons.error_outline, size: 20, color: C.danger),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Data venue belum dimuat dari server.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: C.ink,
+                    ),
+                  ),
+                  if (!busy && notifier.lastError != null) ...[
+                    const SizedBox(height: 2),
+                    Text(notifier.lastError!, style: T.small),
+                  ],
+                ],
+              ),
+            ),
+            if (!busy)
+              GhostButton(
+                label: 'Muat ulang',
+                icon: Icons.refresh,
+                height: 34,
+                onPressed: _refresh,
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 12),
+    ];
+  }
+
+  List<Widget> _courtSection(List<VenueSlot> slots, int court, String name) {
     final mine = slots.where((s) => s.court == court).toList();
     if (mine.isEmpty) return const [];
     return [
@@ -189,7 +325,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
           children: [
             Flexible(
               child: Text(
-                'Lapangan $court',
+                name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: T.h3,
@@ -207,7 +343,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
               label: 'Ganti foto',
               icon: Icons.photo_camera_outlined,
               height: 34,
-              onPressed: () => _pickCourtPhoto(court),
+              onPressed: () => _pickCourtPhoto(name),
             ),
           ],
         ),
@@ -226,8 +362,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
   ///
   /// ponytail: sumber foto masih prasetel/tautan; ganti ke unggahan galeri
   /// saat API media tersedia.
-  Future<void> _pickCourtPhoto(int court) async {
-    final courtName = 'Lapangan $court';
+  Future<void> _pickCourtPhoto(String courtName) async {
     final key = courtPhotoKey(venueProfile.name, courtName);
     final url = TextEditingController();
     final picked = await showModalBottomSheet<String>(
@@ -285,6 +420,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
 
   void _openSlot(BuildContext context, VenueSlot slot) {
     final editable = slot.status != SlotStatus.booked;
+    final courtName = slot.courtName ?? 'Lapangan ${slot.court}';
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -295,7 +431,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
             children: [
               CourtPhoto(
                 venue: venueProfile.name,
-                court: 'Lapangan ${slot.court}',
+                court: courtName,
                 height: 150,
                 radius: 18,
               ),
@@ -309,7 +445,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
                     borderRadius: BorderRadius.circular(999),
                     onTap: () {
                       Navigator.pop(context);
-                      _pickCourtPhoto(slot.court);
+                      _pickCourtPhoto(courtName);
                     },
                     child: const Padding(
                       padding: EdgeInsets.symmetric(
@@ -351,7 +487,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
                 icon: slot.status.icon,
               ),
               const SizedBox(width: 6),
-              Pill('Lapangan ${slot.court}', background: C.surfaceAlt),
+              Pill(courtName, background: C.surfaceAlt),
             ],
           ),
           const SizedBox(height: 14),
@@ -694,7 +830,7 @@ class _SlotRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      slot.guest ?? 'Lapangan ${slot.court}',
+                      slot.guest ?? (slot.courtName ?? 'Lapangan ${slot.court}'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -766,19 +902,144 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-/// Sheet tambah slot: dipakai dari Beranda (FAB) dan tab Jadwal.
-Future<void> showAddSlotSheet(BuildContext context, {DateTime? day}) async {
+/// Sheet tambah slot: dipakai dari dock (dengan pemilih tanggal, satu-satunya
+/// jalur buka slot untuk hari lain) dan tab Jadwal (terkunci ke hari yang
+/// sedang dilihat).
+Future<void> showAddSlotSheet(
+  BuildContext context, {
+  DateTime? day,
+  bool dayPicker = false,
+}) async {
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _AddSlotSheet(day: day ?? DateTime.now()),
+    builder: (_) => _AddSlotSheet(
+      day: day ?? DateTime.now(),
+      dayPicker: dayPicker,
+    ),
+  );
+}
+
+/// Validasi form venue — samakan dengan skema backend
+/// (name 3–120, address 5–300, city 2–60).
+String? _venueFormError(String name, String address, String city) {
+  if (name.trim().length < 3) return 'Nama venue minimal 3 karakter.';
+  if (address.trim().length < 5) return 'Alamat minimal 5 karakter.';
+  if (city.trim().length < 2) return 'Kota minimal 2 karakter.';
+  return null;
+}
+
+/// Sheet buat venue pertama: dipakai banner tab Jadwal dan sheet tambah
+/// slot saat akun venue belum punya venue sama sekali (mis. akun lama yang
+/// role-nya dinaikkan manual di database).
+Future<void> showCreateVenueSheet(BuildContext context, WidgetRef ref) async {
+  final name = TextEditingController();
+  final address = TextEditingController();
+  final city = TextEditingController();
+  String? formError;
+  var saved = false;
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+      ),
+      child: StatefulBuilder(
+        builder: (sheetContext, setSheet) {
+          void submit() {
+            final error = _venueFormError(name.text, address.text, city.text);
+            if (error != null) {
+              setSheet(() => formError = error);
+              return;
+            }
+            saved = true;
+            Navigator.pop(sheetContext);
+          }
+
+          return SheetWrap(
+            title: 'Buat venue',
+            children: [
+              Text(
+                'Venue pertama untuk akun ini. Setelah jadi, tambah lapangan '
+                'lalu buka slot pertamamu.',
+                style: T.small,
+              ),
+              const SizedBox(height: 14),
+              LabeledField(
+                label: 'Nama venue',
+                controller: name,
+                hint: 'Contoh: GOR C-Tra Arena',
+                prefixIcon: Icons.storefront_outlined,
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 14),
+              LabeledField(
+                label: 'Alamat',
+                controller: address,
+                hint: 'Jalan dan nomor',
+                prefixIcon: Icons.location_on_outlined,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 14),
+              LabeledField(
+                label: 'Kota',
+                controller: city,
+                hint: 'Contoh: Bandung',
+                prefixIcon: Icons.place,
+                textCapitalization: TextCapitalization.words,
+              ),
+              if (formError != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  formError!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: C.danger,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              SebarButton(
+                label: 'Simpan venue',
+                icon: Icons.check,
+                onPressed: submit,
+              ),
+            ],
+          );
+        },
+      ),
+    ),
+  );
+  final venueName = name.text.trim();
+  final addr = address.text.trim();
+  final cityName = city.text.trim();
+  name.dispose();
+  address.dispose();
+  city.dispose();
+  if (!saved || !context.mounted) return;
+  final error = await ref
+      .read(venueSlotsProvider.notifier)
+      .createVenueRemote(name: venueName, address: addr, city: cityName);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        error ?? 'Venue $venueName dibuat. Lanjut tambah lapangan.',
+      ),
+    ),
   );
 }
 
 class _AddSlotSheet extends ConsumerStatefulWidget {
-  const _AddSlotSheet({required this.day});
+  const _AddSlotSheet({required this.day, this.dayPicker = false});
 
   final DateTime day;
+
+  /// True = tampilkan pemilih tanggal (dipakai tombol + di dock); false =
+  /// tanggal terkunci ke hari yang sedang dilihat (tab Jadwal).
+  final bool dayPicker;
 
   @override
   ConsumerState<_AddSlotSheet> createState() => _AddSlotSheetState();
@@ -788,6 +1049,51 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
   int _court = 1;
   int _hour = 8;
   int _duration = 2;
+  bool _reloading = false;
+  late DateTime _day = DateTime(
+    widget.day.year,
+    widget.day.month,
+    widget.day.day,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    // Semua tombol "Tambah/Buka slot" membuka sheet ini; kalau venue belum
+    // termuat (refresh awal saat login gagal), coba muat ulang dari sini
+    // supaya Tambah lapangan/Buka slot langsung bisa dipakai.
+    Future.microtask(() {
+      if (!ref.read(venueSlotsProvider.notifier).hasVenue) _retryLoad();
+    });
+  }
+
+  Future<void> _retryLoad() async {
+    if (_reloading) return;
+    setState(() => _reloading = true);
+    await ref.read(venueSlotsProvider.notifier).refresh();
+    if (mounted) setState(() => _reloading = false);
+  }
+
+  /// Jam yang bakal bentrok dengan slot yang sudah ada di lapangan terpilih
+  /// untuk hari terpilih — tombolnya dimatikan supaya pengguna tidak bisa
+  /// memilih jam yang pasti ditolak server (409).
+  Set<int> _busyHours(ApiCourt? court, List<VenueSlot> all) {
+    if (court == null) return const {};
+    final dayStart = DateTime(_day.year, _day.month, _day.day);
+    final busy = <int>{};
+    for (final s in all) {
+      if (s.courtId != court.id) continue;
+      if (DateTime(s.start.year, s.start.month, s.start.day) != dayStart) {
+        continue;
+      }
+      for (var h = 8; h <= 21; h++) {
+        final start = dayStart.add(Duration(hours: h));
+        final end = start.add(Duration(hours: _duration));
+        if (s.start.isBefore(end) && start.isBefore(s.end)) busy.add(h);
+      }
+    }
+    return busy;
+  }
 
   Future<void> _save() async {
     final courts = ref.read(venueSlotsProvider.notifier).courts;
@@ -800,12 +1106,7 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
       );
       return;
     }
-    final start = DateTime(
-      widget.day.year,
-      widget.day.month,
-      widget.day.day,
-      _hour,
-    );
+    final start = DateTime(_day.year, _day.month, _day.day, _hour);
     final error = await ref
         .read(venueSlotsProvider.notifier)
         .addRemote(
@@ -882,58 +1183,107 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
     );
   }
 
+  /// Validasi sebelum kirim — samakan dengan skema backend
+  /// (name 2–60, pricePerHour 1.000–100.000.000, capacity 2–30).
+  String? _courtFormError(String name, String price, String capacity) {
+    if (name.trim().length < 2) return 'Nama lapangan minimal 2 karakter.';
+    final pricePerHour = int.tryParse(price.trim());
+    if (pricePerHour == null || pricePerHour < 1000) {
+      return 'Tarif per jam minimal Rp1.000.';
+    }
+    if (pricePerHour > 100000000) return 'Tarif per jam terlalu besar.';
+    final cap = int.tryParse(capacity.trim());
+    if (cap == null || cap < 2 || cap > 30) {
+      return 'Kapasitas harus 2–30 orang.';
+    }
+    return null;
+  }
+
   Future<void> _addCourt() async {
     final name = TextEditingController();
     final price = TextEditingController(text: '100000');
     final capacity = TextEditingController(text: '12');
     var sport = Sport.badminton;
-    final saved = await showDialog<bool>(
+    String? formError;
+    var saved = false;
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          title: const Text('Tambah lapangan', style: T.h2),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Nama lapangan'),
-              ),
-              DropdownButton<Sport>(
-                value: sport,
-                isExpanded: true,
-                items: [
-                  for (final s in Sport.values)
-                    DropdownMenuItem(value: s, child: Text(s.label)),
-                ],
-                onChanged: (v) => setDialog(() => sport = v ?? sport),
-              ),
-              TextField(
-                controller: price,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Tarif per jam',
-                  prefixText: 'Rp',
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+        ),
+        child: StatefulBuilder(
+          builder: (sheetContext, setSheet) {
+            void submit() {
+              final error = _courtFormError(
+                name.text,
+                price.text,
+                capacity.text,
+              );
+              if (error != null) {
+                setSheet(() => formError = error);
+                return;
+              }
+              saved = true;
+              Navigator.pop(sheetContext);
+            }
+
+            return SheetWrap(
+              title: 'Tambah lapangan',
+              children: [
+                LabeledField(
+                  label: 'Nama lapangan',
+                  controller: name,
+                  hint: 'Contoh: Lapangan A',
+                  prefixIcon: Icons.stadium_outlined,
                 ),
-              ),
-              TextField(
-                controller: capacity,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Kapasitas orang'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Batal', style: TextStyle(color: C.muted)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Simpan', style: TextStyle(color: C.primary)),
-            ),
-          ],
+                const SizedBox(height: 14),
+                const Text('Cabang olahraga', style: T.label),
+                const SizedBox(height: 7),
+                DropdownButton<Sport>(
+                  value: sport,
+                  isExpanded: true,
+                  items: [
+                    for (final s in Sport.values)
+                      DropdownMenuItem(value: s, child: Text(s.label)),
+                  ],
+                  onChanged: (v) => setSheet(() => sport = v ?? sport),
+                ),
+                const SizedBox(height: 14),
+                LabeledField(
+                  label: 'Tarif per jam (Rp)',
+                  controller: price,
+                  hint: 'Contoh: 100000',
+                  keyboard: TextInputType.number,
+                ),
+                const SizedBox(height: 14),
+                LabeledField(
+                  label: 'Kapasitas orang',
+                  controller: capacity,
+                  hint: '2–30',
+                  keyboard: TextInputType.number,
+                ),
+                if (formError != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    formError!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: C.danger,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                SebarButton(
+                  label: 'Simpan lapangan',
+                  icon: Icons.check,
+                  onPressed: submit,
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -943,7 +1293,7 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
     name.dispose();
     price.dispose();
     capacity.dispose();
-    if (saved != true || !mounted) return;
+    if (!saved || !mounted) return;
     final error = await ref
         .read(venueSlotsProvider.notifier)
         .addCourtRemote(
@@ -959,40 +1309,110 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
     );
   }
 
+  /// Isi daftar lapangan saat kosong: spinner saat memuat, ajakan buat
+  /// venue untuk akun tanpa venue, pesan + tombol coba-ulang saat gagal
+  /// muat, atau ajakan Tambah lapangan biasa.
+  Widget _emptyCourts(VenueSlotsNotifier notifier, bool busy) {
+    if (busy) {
+      return Row(
+        children: [
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 8),
+          Text('Memuat data venue…', style: T.small),
+        ],
+      );
+    }
+    if (notifier.missingVenue) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Akun venue ini belum punya venue. Buat venue dulu, lalu tambah '
+            'lapangan dan buka slot.',
+            style: T.small,
+          ),
+          const SizedBox(height: 2),
+          TextButton(
+            onPressed: () => showCreateVenueSheet(context, ref),
+            child: const Text('Buat venue'),
+          ),
+        ],
+      );
+    }
+    if (!notifier.hasVenue) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            notifier.lastError ??
+                'Data venue belum dimuat dari server. Muat ulang dulu '
+                    'sebelum menambah lapangan.',
+            style: T.small,
+          ),
+          const SizedBox(height: 2),
+          TextButton(onPressed: _retryLoad, child: const Text('Coba muat ulang')),
+        ],
+      );
+    }
+    return Text(
+      'Belum ada lapangan di akun venue ini. Slot tidak bisa dibuka '
+      'sebelum lapangan dibuat.',
+      style: T.small,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final notifier = ref.watch(venueSlotsProvider.notifier);
+    // Watch state (bukan notifier) supaya sheet rebuild saat data venue
+    // atau lapangan tiba dari server.
+    final all = ref.watch(venueSlotsProvider);
+    final notifier = ref.read(venueSlotsProvider.notifier);
     final courts = notifier.courts;
     final courtCount = courts.length;
     final court = _court <= courts.length ? courts[_court - 1] : null;
     final rate = court?.pricePerHour ?? 0;
     final total = rate * _duration;
+    final busy = _reloading || notifier.isLoading;
+    final busyHours = _busyHours(court, all);
+    final hourBlocked = busyHours.contains(_hour);
+    final today = DateTime.now();
+    final today0 = DateTime(today.year, today.month, today.day);
+    final dayIndex = _day.difference(today0).inDays;
 
     return SheetWrap(
       title: 'Tambah slot',
       children: [
         Text(
-          '${notifier.venue?.name ?? 'Venue'} · ${formatLongDate(widget.day)}',
+          '${notifier.venue?.name ?? 'Venue'} · ${formatLongDate(_day)}',
           style: T.small,
         ),
+        if (widget.dayPicker) ...[
+          const SizedBox(height: 14),
+          _DayStrip(
+            selected: dayIndex,
+            onPick: (d) => setState(
+              () => _day = today0.add(Duration(days: d)),
+            ),
+          ),
+        ],
         const SizedBox(height: 14),
         Row(
           children: [
             const Text('Lapangan', style: T.label),
             const Spacer(),
             TextButton(
-              onPressed: _addCourt,
+              onPressed: notifier.hasVenue && !busy ? _addCourt : null,
               child: const Text('Tambah lapangan'),
             ),
           ],
         ),
         const SizedBox(height: 7),
         if (courts.isEmpty)
-          Text(
-            'Belum ada lapangan di akun venue ini. Slot tidak bisa dibuka '
-            'sebelum lapangan dibuat.',
-            style: T.small,
-          )
+          _emptyCourts(notifier, busy)
         else
           Row(
             children: [
@@ -1063,22 +1483,36 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
             itemBuilder: (_, i) {
               final h = 8 + i;
               final active = h == _hour;
+              // Jam yang bentrok dengan slot yang sudah ada tidak bisa
+              // dipilih — server pasti menolaknya (409), jadi matikan
+              // tombolnya sejak awal, bukan gagal saat disimpan.
+              final taken = busyHours.contains(h);
               return GestureDetector(
-                onTap: () => setState(() => _hour = h),
+                onTap: taken ? null : () => setState(() => _hour = h),
                 child: Container(
                   width: 56,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: active ? C.primaryFill : C.surface,
+                    color: taken
+                        ? C.surfaceAlt
+                        : active
+                        ? C.primaryFill
+                        : C.surface,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: active ? C.primaryFill : C.line),
+                    border: Border.all(
+                      color: taken
+                          ? C.surfaceAlt
+                          : active
+                          ? C.primaryFill
+                          : C.line,
+                    ),
                   ),
                   child: Text(
                     '${h.toString().padLeft(2, '0')}:00',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: C.ink,
+                      color: taken ? C.faint : C.ink,
                     ),
                   ),
                 ),
@@ -1086,6 +1520,16 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
             },
           ),
         ),
+        if (court != null && busyHours.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            hourBlocked
+                ? 'Jam ${_hour.toString().padLeft(2, '0')}:00 sudah terpakai '
+                      'di ${court.name}. Pilih jam lain.'
+                : 'Jam abu-abu sudah terpakai di ${court.name}.',
+            style: T.caption,
+          ),
+        ],
         const SizedBox(height: 14),
         const Text('Durasi', style: T.label),
         const SizedBox(height: 7),
@@ -1160,7 +1604,7 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
         SebarButton(
           label: 'Buka slot',
           icon: Icons.add,
-          onPressed: court == null ? null : _save,
+          onPressed: court == null || hourBlocked ? null : _save,
         ),
       ],
     );

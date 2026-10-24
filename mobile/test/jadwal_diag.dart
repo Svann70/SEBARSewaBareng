@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sebar/core/theme.dart';
@@ -15,14 +14,16 @@ void main() {
 
     final prev = FlutterError.onError;
     FlutterError.onError = (details) {
-      debugPrint('DETAIL-SUMMARY: ${details.summary.toString(depth: 100)}');
-      debugPrint('DETAIL-FULL:\n${details.toString(includeProperties: true)}');
-      prev?.call(FlutterErrorDetails(
-        exception: details.exception,
-        stack: details.stack,
-        context: ErrorDescription('(diplester untuk test)'),
-      ));
-    }; 
+      debugPrint('DETAIL-SUMMARY: ${details.summary}');
+      debugPrint('DETAIL-FULL:\n$details');
+      prev?.call(
+        FlutterErrorDetails(
+          exception: details.exception,
+          stack: details.stack,
+          context: ErrorDescription('(diplester untuk test)'),
+        ),
+      );
+    };
 
     await tester.pumpWidget(
       ProviderScope(

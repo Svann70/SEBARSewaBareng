@@ -2,6 +2,7 @@ import { slotDto } from '../venues/slots.shared.js';
 import {
   createCourtSchema,
   createSlotSchema,
+  createVenueSchema,
   idSchema,
   patchCourtSchema,
   patchSlotSchema,
@@ -11,6 +12,10 @@ import * as service from './venue-admin.service.js';
 
 export async function listVenues(req, res) {
   res.json({ items: await service.listVenues(req.user.id) });
+}
+
+export async function createVenue(req, res) {
+  res.status(201).json(await service.createVenue(req.user.id, createVenueSchema.parse(req.body)));
 }
 
 export async function createCourt(req, res) {

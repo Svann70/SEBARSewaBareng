@@ -562,110 +562,11 @@ class VenueSlot {
       );
 }
 
-DateTime _day(int offset) {
-  final n = DateTime.now();
-  return DateTime(n.year, n.month, n.day + offset);
-}
-
-DateTime _slotAt(int dayOffset, int hour) => DateTime(
-  _day(dayOffset).year,
-  _day(dayOffset).month,
-  _day(dayOffset).day,
-  hour,
-);
-
 class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
+  /// Tanpa seed: slot venue selalu dari server, supaya jadwal tidak pernah
+  /// menampilkan data palsu yang menutupi kegagalan muat.
   @override
-  List<VenueSlot> build() => [
-    VenueSlot(
-      id: 's1',
-      court: 1,
-      start: _slotAt(0, 8),
-      end: _slotAt(0, 10),
-      price: 200000,
-      status: SlotStatus.booked,
-      guest: 'Raka · Badminton',
-    ),
-    VenueSlot(
-      id: 's2',
-      court: 1,
-      start: _slotAt(0, 10),
-      end: _slotAt(0, 12),
-      price: 200000,
-    ),
-    VenueSlot(
-      id: 's3',
-      court: 1,
-      start: _slotAt(0, 13),
-      end: _slotAt(0, 15),
-      price: 200000,
-      status: SlotStatus.lobby,
-      guest: 'Room butuh 2 orang',
-    ),
-    VenueSlot(
-      id: 's4',
-      court: 1,
-      start: _slotAt(0, 16),
-      end: _slotAt(0, 18),
-      price: 250000,
-    ),
-    VenueSlot(
-      id: 's5',
-      court: 1,
-      start: _slotAt(0, 19),
-      end: _slotAt(0, 21),
-      price: 300000,
-      status: SlotStatus.booked,
-      guest: 'Tim Dago · Futsal',
-    ),
-    VenueSlot(
-      id: 's6',
-      court: 2,
-      start: _slotAt(0, 16),
-      end: _slotAt(0, 18),
-      price: 220000,
-      status: SlotStatus.booked,
-      guest: 'Tim Sutos · Mini Soccer',
-    ),
-    VenueSlot(
-      id: 's7',
-      court: 2,
-      start: _slotAt(0, 18),
-      end: _slotAt(0, 20),
-      price: 220000,
-    ),
-    VenueSlot(
-      id: 's8',
-      court: 2,
-      start: _slotAt(0, 20),
-      end: _slotAt(0, 22),
-      price: 0,
-      status: SlotStatus.closed,
-    ),
-    VenueSlot(
-      id: 's9',
-      court: 1,
-      start: _slotAt(1, 8),
-      end: _slotAt(1, 10),
-      price: 200000,
-      status: SlotStatus.booked,
-      guest: 'Ayu · Badminton',
-    ),
-    VenueSlot(
-      id: 's10',
-      court: 1,
-      start: _slotAt(1, 10),
-      end: _slotAt(1, 12),
-      price: 200000,
-    ),
-    VenueSlot(
-      id: 's11',
-      court: 2,
-      start: _slotAt(1, 19),
-      end: _slotAt(1, 21),
-      price: 250000,
-    ),
-  ];
+  List<VenueSlot> build() => const [];
 
   bool _overlaps(int court, DateTime start, DateTime end) => state.any(
     (s) =>
@@ -712,8 +613,27 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
   List<ApiVenue> _venues = const [];
   String? _venueId;
   List<VenueSlot> _raw = const [];
+  bool _loading = false;
+  bool _loaded = false;
+  String? _lastError;
+  Future<String?>? _inFlight;
 
   List<ApiVenue> get venues => _venues;
+
+  /// Sedang memuat dari server — dipakai layar untuk spinner.
+  bool get isLoading => _loading;
+
+  /// Pesan kegagalan muat terakhir, null kalau tidak ada/terakhir sukses.
+  String? get lastError => _lastError;
+
+  /// True setelah /venue/venues sukses. False = belum bisa kelola lapangan
+  /// atau slot; tombol add di layar harus memicu refresh() dulu.
+  bool get hasVenue => _venueId != null;
+
+  /// Server sudah menjawab tapi akun ini tidak punya venue sama sekali
+  /// (mis. akun lama yang role-nya dinaikkan manual) — bukan kegagalan
+  /// muat; layar harus menawarkan membuat venue, bukan muat ulang.
+  bool get missingVenue => _loaded && _venues.isEmpty;
 
   ApiVenue? get venue {
     for (final v in _venues) {
@@ -783,7 +703,19 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     );
   }
 
-  Future<String?> refresh() async {
+  /// Muat ulang venue + slot 7 hari ke depan. Single-flight: panggilan saat
+  /// refresh berjalan berbagi future yang sama supaya tidak request dobel
+  /// (layar venue memuat semua tab sekaligus saat shell terbuka).
+  Future<String?> refresh() {
+    final pending = _inFlight;
+    if (pending != null) return pending;
+    final future = _doRefresh();
+    _inFlight = future;
+    return future.whenComplete(() => _inFlight = null);
+  }
+
+  Future<String?> _doRefresh() async {
+    _loading = true;
     try {
       final data = _asMap(await api.get('/venue/venues'));
       final mine = [
@@ -791,6 +723,7 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
           ApiVenue.fromJson(_asMap(item)),
       ];
       _venues = mine;
+      _loaded = true;
       final selected = _venueId;
       _venueId = mine.any((v) => v.id == selected)
           ? selected
@@ -800,19 +733,32 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
       final days = <DateTime>[
         for (var i = 0; i < 7; i++) DateTime.now().add(Duration(days: i)),
       ];
-      final pages = await Future.wait([
-        for (final day in days)
-          api.get('/venue/slots', query: {'date': _apiDate(day)}),
-      ]);
-      _raw = [
-        for (final page in pages)
-          for (final item in _asList(_asMap(page)['items']))
-            _fromApi(ApiSlot.fromJson(_asMap(item))),
-      ];
+      final pages = await Future.wait([for (final day in days) _slotsFor(day)]);
+      _raw = [for (final page in pages) ...page];
       _applySlots();
+      _lastError = null;
       return null;
     } catch (error) {
-      return apiMessage(error);
+      _lastError = apiMessage(error);
+      return _lastError;
+    } finally {
+      _loading = false;
+    }
+  }
+
+  /// Satu hari gagal tidak membatalkan refresh — layar tetap menampilkan
+  /// data hari lain dan bisa dicoba lagi lewat tarik-muat-ulang.
+  Future<List<VenueSlot>> _slotsFor(DateTime day) async {
+    try {
+      final page = _asMap(
+        await api.get('/venue/slots', query: {'date': _apiDate(day)}),
+      );
+      return [
+        for (final item in _asList(page['items']))
+          _fromApi(ApiSlot.fromJson(_asMap(item))),
+      ];
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -897,6 +843,26 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
           'capacity': capacity,
         },
       );
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  /// Buat venue pertama untuk akun venue yang belum punya venue
+  /// (mis. akun lama yang role-nya dinaikkan manual di database).
+  Future<String?> createVenueRemote({
+    required String name,
+    required String address,
+    required String city,
+  }) async {
+    try {
+      await api.post('/venue/venues', body: {
+        'name': name,
+        'address': address,
+        'city': city,
+      });
       await refresh();
       return null;
     } catch (error) {

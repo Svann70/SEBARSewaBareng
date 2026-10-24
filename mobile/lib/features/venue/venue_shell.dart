@@ -50,7 +50,10 @@ class _VenueShellState extends State<VenueShell> {
         centerIcon: Icons.add,
         centerLabel: 'Buka slot',
         onSelect: (i) => setState(() => _index = i),
-        onCreate: () => showAddSlotSheet(context),
+        // Satu-satunya pintu buka slot untuk hari lain: sheet-nya punya
+        // pemilih tanggal. Tombol Tambah di tab Jadwal terkunci ke hari
+        // yang sedang dilihat.
+        onCreate: () => showAddSlotSheet(context, dayPicker: true),
       ),
     );
   }
@@ -65,6 +68,25 @@ class _VenueHome extends ConsumerStatefulWidget {
 
 class _VenueHomeState extends ConsumerState<_VenueHome> {
   String _period = 'Pekan';
+
+  @override
+  void initState() {
+    super.initState();
+    // Shell venue membangun semua tab sekaligus; kalau refresh awal saat
+    // login gagal, beranda ikut memuat ulang dan memberi tahu pengguna
+    // lewat snackbar supaya kegagalan tidak diam-diam.
+    Future.microtask(() {
+      final notifier = ref.read(venueSlotsProvider.notifier);
+      if (!notifier.hasVenue) {
+        notifier.refresh().then((error) {
+          if (!mounted || error == null) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Data venue gagal dimuat: $error')),
+          );
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -184,7 +206,7 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
                 label: 'Buka slot',
                 detail: '$open kosong hari ini',
                 tint: C.primary,
-                onTap: () => showAddSlotSheet(context),
+                onTap: () => showAddSlotSheet(context, dayPicker: true),
               ),
             ),
             const SizedBox(width: 10),
@@ -220,7 +242,7 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
               padding: const EdgeInsets.only(bottom: 8),
               child: RankRow(
                 rank: i + 1,
-                title: 'Lapangan ${courts[i].court}',
+                title: courts[i].name,
                 subtitle: '${courts[i].taken} dari ${courts[i].total} slot',
                 value: '${courts[i].percent}%',
                 background: switch (i % 4) {
@@ -306,12 +328,14 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
 class _CourtStat {
   const _CourtStat({
     required this.court,
+    required this.name,
     required this.taken,
     required this.total,
     required this.guests,
   });
 
   final int court;
+  final String name;
   final int taken;
   final int total;
   final List<String> guests;
@@ -336,6 +360,7 @@ List<_CourtStat> _courtStats(List<VenueSlot> slots) {
     for (final entry in byCourt.entries)
       _CourtStat(
         court: entry.key,
+        name: entry.value.first.courtName ?? 'Lapangan ${entry.key}',
         taken: entry.value
             .where(
               (s) =>
@@ -395,7 +420,9 @@ class _TodayRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Lapangan ${slot.court}',
+                  slot.courtName ?? 'Lapangan ${slot.court}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,

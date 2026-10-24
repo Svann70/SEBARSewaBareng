@@ -267,6 +267,39 @@ describe('wallet', { skip }, () => {
   });
 });
 
+describe('venue admin', { skip }, () => {
+  test('an admin without a venue can create one via POST /venue/venues', async () => {
+    // Simulate an account whose role was promoted by hand: venue row removed.
+    const admin = await register('VENUE_ADMIN');
+    await db.query('DELETE FROM venues WHERE owner_id = $1', [admin.id]);
+    const empty = await api('GET', '/venue/venues', { token: admin.token });
+    assert.equal(empty.status, 200);
+    assert.equal(empty.body.items.length, 0);
+
+    assert.equal(
+      (await api('POST', '/venue/venues', { token: admin.token, body: { name: 'X', address: 'Jl. 1', city: 'B' } })).status,
+      422,
+      'validation',
+    );
+    assert.equal(
+      (await api('POST', '/venue/venues', { token: (await player()).token, body: { name: 'GOR Y', address: 'Jl. Y No. 1', city: 'Bandung' } })).status,
+      403,
+      'players rejected',
+    );
+
+    const r = await api('POST', '/venue/venues', {
+      token: admin.token,
+      body: { name: 'GOR Baru', address: 'Jl. Baru No. 9', city: 'Bandung', description: 'Cabang baru' },
+    });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.name, 'GOR Baru');
+    assert.deepEqual(r.body.courts, []);
+    const list = await api('GET', '/venue/venues', { token: admin.token });
+    assert.equal(list.body.items.length, 1);
+    assert.equal(list.body.items[0].id, r.body.id);
+  });
+});
+
 describe('venue slots', { skip }, () => {
   test('overlapping slot on the same court is rejected', async () => {
     const v = await venueWithCourt();
