@@ -96,7 +96,7 @@ BEGIN
          'OPEN'
   FROM public.courts c
   CROSS JOIN (VALUES (1,9),(2,20),(3,19),(4,8),(5,16)) AS g(d, h)
-  ON CONFLICT (court_id, start_at) DO NOTHING;
+  ON CONFLICT (court_id, start_at) WHERE NOT released DO NOTHING;
 
   ---------------------------------------------------------------------------
   -- 8.d Past slots — 5 per court untuk booking historis (60 slot)
@@ -112,7 +112,7 @@ BEGIN
          'PAST'
   FROM public.courts c
   CROSS JOIN (VALUES (3,9),(5,16),(8,19),(10,20),(12,20)) AS g(d, h)
-  ON CONFLICT (court_id, start_at) DO NOTHING;
+  ON CONFLICT (court_id, start_at) WHERE NOT released DO NOTHING;
 
   ---------------------------------------------------------------------------
   -- 8.e 40 booking historis (analytics: omzet, fee, peak hours, no-show)

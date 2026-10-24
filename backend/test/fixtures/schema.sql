@@ -1826,3 +1826,4 @@ ALTER TABLE public.wallets ENABLE ROW LEVEL SECURITY;
 
 -- Manual Supabase SQL from db/supabase/ (not part of the pg_dump above); included, not copied.
 \ir ../../db/supabase/001_refresh_tokens.sql
+\ir ../../db/supabase/002_court_setup.sql

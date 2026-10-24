@@ -65,7 +65,7 @@ await tx(async (c) => {
        SELECT $1, t, t + interval '2 hours', $2
          FROM generate_series(1, 7) AS d, unnest(ARRAY[8, 16, 20]) AS h,
               LATERAL (SELECT (((now() AT TIME ZONE 'Asia/Jakarta')::date + d) + make_interval(hours => h)) AT TIME ZONE 'Asia/Jakarta' AS t) x
-       ON CONFLICT (court_id, start_at) DO NOTHING`,
+       ON CONFLICT (court_id, start_at) WHERE NOT released DO NOTHING`,
       [court.id, price * 2],
     );
   }

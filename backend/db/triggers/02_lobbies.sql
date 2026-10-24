@@ -15,8 +15,8 @@ BEGIN
   SELECT * INTO v_slot FROM public.court_slots WHERE id = NEW.slot_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'SEBAR::SLOT_NOT_FOUND'; END IF;
 
-  IF TG_OP = 'INSERT' AND v_slot.status <> 'OPEN' THEN
-    RAISE EXCEPTION 'SEBAR::SLOT_NOT_OPEN';
+  IF TG_OP = 'INSERT' AND (v_slot.status <> 'OPEN' OR v_slot.released) THEN
+    RAISE EXCEPTION 'SEBAR::SLOT_NOT_OPEN';   -- released = jamnya sudah dipakai slot lain
   END IF;
 
   IF NEW.price_total <> v_slot.price THEN

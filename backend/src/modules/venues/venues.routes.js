@@ -6,3 +6,4 @@ export const venuesRoutes = Router();
 
 venuesRoutes.get('/', controller.list);
 venuesRoutes.get('/:id/slots', controller.listSlots);
+venuesRoutes.get('/:id/availability', controller.availability);

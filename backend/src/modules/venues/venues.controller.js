@@ -12,3 +12,9 @@ export async function listSlots(req, res) {
   const { date } = dateSchema.parse(req.query);
   res.json({ items: (await service.listSlots(id, date)).map(slotDto) });
 }
+
+export async function availability(req, res) {
+  const { id } = idSchema.parse(req.params);
+  const { date } = dateSchema.parse(req.query);
+  res.json(await service.availability(id, date));
+}

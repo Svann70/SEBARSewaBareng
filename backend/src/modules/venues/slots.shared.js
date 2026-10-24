@@ -7,6 +7,10 @@ export const SLOT_SELECT = `
     JOIN venues v ON v.id = c.venue_id
     LEFT JOIN lobbies l ON l.slot_id = s.id AND l.status IN ('OPEN', 'FILLED', 'CONFIRMED')`;
 
+// One definition of "this slot is taken by a room", shared by the availability grid and room creation.
+// `s` is the court_slots alias.
+export const ACTIVE_LOBBY = `EXISTS (SELECT 1 FROM lobbies al WHERE al.slot_id = s.id AND al.status IN ('OPEN', 'FILLED', 'CONFIRMED'))`;
+
 export function slotDto(r) {
   return {
     id: r.id,
