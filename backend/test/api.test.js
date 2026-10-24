@@ -818,3 +818,26 @@ describe('venue setup form', { skip }, () => {
     assert.equal(own.body.items[0].courts[0].status, 'MAINTENANCE');
   });
 });
+
+describe('closing hours (review fix)', { skip }, () => {
+  test('owner can close an hour a cancelled room used to hold; not one a live room holds', async () => {
+    const { admin, court } = await setupCourt();
+    const day = wibDate(33, false);
+    const host = await player(1_000_000);
+    const room = await roomAt(host, court.id, wibAt(day, 16), { hours: 2, sport: 'FUTSAL' });
+    assert.equal(room.status, 201);
+    assert.equal((await api('DELETE', `/lobbies/${room.body.id}`, { token: host.token })).status, 200);
+    const close = (h) =>
+      api('POST', '/venue/slots', {
+        token: admin.token,
+        body: { courtId: court.id, startAt: wibAt(day, h), endAt: wibAt(day, h + 1), price: 100_000, status: 'BLOCKED' },
+      });
+    const closed = await close(17);
+    assert.equal(closed.status, 201, JSON.stringify(closed.body));
+    const live = await roomAt(await player(1_000_000), court.id, wibAt(day, 10), { sport: 'FUTSAL' });
+    assert.equal(live.status, 201);
+    const refused = await close(10);
+    assert.equal(refused.status, 409);
+    assert.match(refused.body.error.message, /terisi/);
+  });
+});

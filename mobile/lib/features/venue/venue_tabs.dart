@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
@@ -27,7 +26,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
   Widget build(BuildContext context) {
     ref.watch(venueSlotsProvider);
     final notifier = ref.read(venueSlotsProvider.notifier);
-    final day = dayOnly(DateTime.now().add(Duration(days: _day)));
+    final day = wibToday().add(Duration(days: _day));
     final grid = ref.watch(venueDayProvider(day));
 
     return RefreshIndicator(
@@ -54,6 +53,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
           ),
           const SizedBox(height: 14),
           grid.when(
+            skipLoadingOnReload: true,
             data: (courts) => courts.isEmpty
                 ? EmptyState(
                     icon: Icons.sports_score,
@@ -117,7 +117,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
 
   Future<void> _onHour(CourtDay day, HourCell cell) async {
     final notifier = ref.read(venueSlotsProvider.notifier);
-    final when = '${formatTime(cell.start)} di ${day.court.name}';
+    final when = '${formatTime(wib(cell.start))} di ${day.court.name}';
     switch (cell.state) {
       case HourState.taken:
         // Room bisa dibuat pemain kapan saja; muat ulang bila namanya belum ada.
@@ -127,7 +127,9 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
           if (!mounted) return;
           who = notifier.bookingAt(day.court.id, cell.start);
         }
-        _toast('${formatTime(cell.start)} · ${who ?? 'Sudah dipesan pemain.'}');
+        _toast(
+          '${formatTime(wib(cell.start))} · ${who ?? 'Sudah dipesan pemain.'}',
+        );
       case HourState.past:
         _toast('Jam $when sudah lewat batas pemesanan (6 jam sebelum main).');
       case HourState.free:
@@ -244,7 +246,7 @@ class _HourChip extends StatelessWidget {
     };
     return Semantics(
       button: true,
-      label: '${formatTime(cell.start)} $status',
+      label: '${formatTime(wib(cell.start))} $status',
       child: Material(
         color: bg,
         borderRadius: BorderRadius.circular(10),
@@ -260,7 +262,7 @@ class _HourChip extends StatelessWidget {
               border: Border.all(color: border),
             ),
             child: Text(
-              formatTime(cell.start),
+              formatTime(wib(cell.start)),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
@@ -312,7 +314,7 @@ class _DayStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    final now = wibToday();
     return SizedBox(
       height: 62,
       child: ListView.separated(
@@ -362,320 +364,6 @@ class _DayStrip extends StatelessWidget {
       ),
     );
   }
-}
-
-// ─── Analytics ─────────────────────────────────────────────────────────────
-
-class VenueAnalyticsScreen extends StatelessWidget {
-  const VenueAnalyticsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
-              child: RoundBackHeader(title: 'Analytics venue'),
-            ),
-            const Expanded(child: VenueAnalyticsTab()),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class VenueAnalyticsTab extends StatelessWidget {
-  const VenueAnalyticsTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final maxPeak = peakHours.map((e) => e.$2).reduce((a, b) => a > b ? a : b);
-
-    return ListView(
-      padding: kScreenPad,
-      children: [
-        SportPanel(
-          gradient: C.primaryPanel,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Pill(
-                'Omzet bulan ini',
-                color: C.ink,
-                background: Colors.white.withValues(alpha: 0.5),
-              ),
-              const SizedBox(height: 10),
-              Text(rupiah(venueSummary.revenue), style: T.h1),
-              const SizedBox(height: 6),
-              Text(
-                'Fee SEBAR ${rupiah(venueSummary.fee)} · '
-                '${venueSummary.bookings} booking',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  height: 1.4,
-                  color: C.ink,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _Kpi(
-                label: 'Okupansi',
-                value: '${(venueSummary.occupancy * 100).round()}%',
-                icon: Icons.pie_chart_outline,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _Kpi(
-                label: 'No-show',
-                value: '${venueSummary.noShow}',
-                icon: Icons.block,
-                danger: true,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        const SectionHeader('Peak hours'),
-        const SizedBox(height: 10),
-        SurfaceCard(
-          radius: 18,
-          child: Column(
-            children: [
-              SizedBox(
-                height: 122,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    for (final p in peakHours)
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 3),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Text(
-                                '${p.$2}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: C.muted,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Container(
-                                height: 92 * p.$2 / maxPeak,
-                                decoration: BoxDecoration(
-                                  color: p.$2 == maxPeak ? C.primary : C.mint,
-                                  borderRadius: const BorderRadius.vertical(
-                                    top: Radius.circular(5),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                '${p.$1}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: C.muted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Divider(),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Icon(Icons.bolt, size: 15, color: C.primary),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      'Jam tersibuk 20:00, 26 booking '
-                      '(${(26 / 128 * 100).round()}%).',
-                      style: T.small,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        const SectionHeader('Tren pendapatan'),
-        const SizedBox(height: 10),
-        SurfaceCard(
-          radius: 18,
-          padding: const EdgeInsets.fromLTRB(14, 16, 14, 10),
-          child: Column(
-            children: [
-              SizedBox(
-                height: 110,
-                width: double.infinity,
-                child: CustomPaint(
-                  painter: _LineChartPainter(
-                    values: monthlyRevenue.map((e) => e.$2.toDouble()).toList(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  for (final m in monthlyRevenue)
-                    Text(
-                      m.$1,
-                      style: const TextStyle(fontSize: 12, color: C.muted),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        SurfaceCard(
-          radius: 18,
-          child: Row(
-            children: [
-              const Icon(Icons.query_stats, size: 16, color: C.primary),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  'Angka dihitung otomatis dari transaksi yang tercatat.',
-                  style: T.small,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Kpi extends StatelessWidget {
-  const _Kpi({
-    required this.label,
-    required this.value,
-    required this.icon,
-    this.danger = false,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final bool danger;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: C.surface,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: danger ? C.danger : C.primary),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.6,
-              color: C.ink,
-            ),
-          ),
-          Text(label, style: const TextStyle(fontSize: 12, color: C.muted)),
-        ],
-      ),
-    );
-  }
-}
-
-class _LineChartPainter extends CustomPainter {
-  _LineChartPainter({required this.values});
-
-  final List<double> values;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (values.length < 2) return;
-    final maxV = values.reduce((a, b) => a > b ? a : b);
-    final minV = values.reduce((a, b) => a < b ? a : b);
-    final range = (maxV - minV) == 0 ? 1 : maxV - minV;
-    final dx = size.width / (values.length - 1);
-
-    Offset point(int i) => Offset(
-      dx * i,
-      size.height - 6 - ((values[i] - minV) / range) * (size.height - 12),
-    );
-
-    final path = Path()..moveTo(point(0).dx, point(0).dy);
-    for (var i = 0; i < values.length - 1; i++) {
-      final p0 = point(i);
-      final p1 = point(i + 1);
-      final midX = (p0.dx + p1.dx) / 2;
-      path.cubicTo(midX, p0.dy, midX, p1.dy, p1.dx, p1.dy);
-    }
-
-    final fill = Path.from(path)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(
-      fill,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            C.primary.withValues(alpha: 0.22),
-            C.primary.withValues(alpha: 0),
-          ],
-        ).createShader(Offset.zero & size),
-    );
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = C.primary
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2
-        ..strokeCap = StrokeCap.round,
-    );
-
-    for (var i = 0; i < values.length; i++) {
-      final p = point(i);
-      canvas.drawCircle(p, 3.4, Paint()..color = C.surface);
-      canvas.drawCircle(
-        p,
-        2.2,
-        Paint()..color = i == values.length - 1 ? C.amber : C.primary,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _LineChartPainter old) => old.values != values;
 }
 
 // ─── Scan ──────────────────────────────────────────────────────────────────

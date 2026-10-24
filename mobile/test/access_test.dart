@@ -39,53 +39,29 @@ void main() {
     expect(container.read(authProvider), isNull);
   });
 
-  test('slot bentrok ditolak 409, slot bebas diterima', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final slots = container.read(venueSlotsProvider.notifier);
-    final day = DateTime.now();
-    DateTime at(int h) => DateTime(day.year, day.month, day.day, h);
-
-    // Tanpa seed: isi state lewat add() dengan slot Lapangan 1, 08:00-10:00.
-    expect(
-      slots.add(court: 1, start: at(8), end: at(10), price: 200000),
-      isNull,
+  test('slot disaring per tanggal WIB, apa pun zona waktu HP', () {
+    // 23:30 WIB Senin = 16:30 UTC Senin; 00:30 WIB Selasa = 17:30 UTC Senin.
+    VenueSlot at(String utc) => VenueSlot(
+      id: utc,
+      court: 1,
+      start: DateTime.parse(utc),
+      end: DateTime.parse(utc).add(const Duration(hours: 1)),
+      price: 100000,
     );
-    expect(
-      slots.add(court: 1, start: at(9), end: at(11), price: 200000),
-      'Slot bentrok dengan jadwal lain.',
-    );
-    // Bersebelahan (06:00-08:00) tidak dianggap bentrok.
-    expect(
-      slots.add(court: 1, start: at(6), end: at(8), price: 200000),
-      isNull,
-    );
-    expect(
-      container.read(venueSlotsProvider).where((s) => s.court == 1).length,
-      2,
-    );
+    final all = [at('2026-10-26T16:30:00Z'), at('2026-10-26T17:30:00Z')];
+    expect(slotsOn(all, DateTime(2026, 10, 26)).map((s) => s.id), [
+      '2026-10-26T16:30:00Z',
+    ]);
+    expect(slotsOn(all, DateTime(2026, 10, 27)).map((s) => s.id), [
+      '2026-10-26T17:30:00Z',
+    ]);
   });
-
-  test('slot hari lain disaring per tanggal', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    final slots = container.read(venueSlotsProvider.notifier);
-    final today = DateTime.now();
-    final tomorrow = today.add(const Duration(days: 1));
-    DateTime at(DateTime d, int h) => DateTime(d.year, d.month, d.day, h);
-
-    slots.add(court: 1, start: at(today, 9), end: at(today, 10), price: 100000);
-    slots.add(
-      court: 2,
-      start: at(tomorrow, 19),
-      end: at(tomorrow, 21),
-      price: 250000,
+  test('jam tampil dalam WIB, apa pun zona waktu HP', () {
+    final start = DateTime.utc(2026, 10, 26, 12); // 19:00 WIB
+    expect(wib(start).hour, 19);
+    expect(
+      dayOnly(wib(DateTime.utc(2026, 10, 26, 18))),
+      DateTime(2026, 10, 27),
     );
-
-    final all = container.read(venueSlotsProvider);
-    final todayList = slotsOn(all, today);
-    expect(todayList.length, 1);
-    expect(todayList.every((s) => s.start.day == today.day), isTrue);
-    expect(slotsOn(all, tomorrow).length, 1);
   });
 }

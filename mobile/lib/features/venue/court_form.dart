@@ -28,6 +28,10 @@ class _CourtFormScreenState extends ConsumerState<CourtFormScreen> {
   bool _busy = false;
   String? _error;
 
+  /// Edit tapi lapangannya tidak ditemukan (muat gagal): jangan jadikan
+  /// form tambah, nanti tersimpan sebagai lapangan dobel.
+  String? _loadError;
+
   bool get _editing => widget.courtId != null;
 
   @override
@@ -38,11 +42,19 @@ class _CourtFormScreenState extends ConsumerState<CourtFormScreen> {
 
   Future<void> _load() async {
     final notifier = ref.read(venueSlotsProvider.notifier);
+    setState(() => _loadError = null);
     if (!notifier.hasVenue) await notifier.refresh();
     if (!mounted) return;
     ApiCourt? court;
     for (final c in notifier.courts) {
       if (c.id == widget.courtId) court = c;
+    }
+    if (_editing && court == null) {
+      setState(
+        () => _loadError =
+            notifier.lastError ?? 'Lapangan tidak ditemukan di akun ini.',
+      );
+      return;
     }
     final draft = court == null
         ? CourtDraft(name: 'Lapangan ${notifier.courts.length + 1}')
@@ -106,7 +118,28 @@ class _CourtFormScreenState extends ConsumerState<CourtFormScreen> {
     final d = _draft;
     return Scaffold(
       body: SafeArea(
-        child: d == null
+        child: _loadError != null
+            ? Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    const RoundBackHeader(title: 'Edit lapangan'),
+                    const Spacer(),
+                    EmptyState(
+                      icon: Icons.cloud_off,
+                      title: 'Lapangan gagal dimuat',
+                      message: _loadError!,
+                      action: GhostButton(
+                        label: 'Coba lagi',
+                        icon: Icons.refresh,
+                        onPressed: _load,
+                      ),
+                    ),
+                    const Spacer(),
+                  ],
+                ),
+              )
+            : d == null
             ? const Center(child: CircularProgressIndicator())
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),

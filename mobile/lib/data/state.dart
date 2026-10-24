@@ -190,7 +190,6 @@ class AuthNotifier extends Notifier<AccountRole?> {
     ref.read(sessionProvider.notifier).set(null);
     state = null;
     // Ditunda: callback bisa terpanggil di tengah refresh provider lain.
-    venueProfile = _seedVenueProfile;
     Future.microtask(() {
       if (!ref.mounted) return;
       for (final p in _accountData) {
@@ -331,11 +330,6 @@ LobbyStatus _lobbyStatusFromApi(String? value) => switch (value) {
   'CANCELLED' => LobbyStatus.cancelled,
   _ => LobbyStatus.open,
 };
-
-/// Profil venue pemilik akun venue. Nilai awal = seed, diganti dari
-/// `/venue/venues` setelah login supaya nama dan jumlah lapangan sesuai akun.
-const _seedVenueProfile = (name: '', city: '', courts: 0);
-var venueProfile = _seedVenueProfile;
 
 /// Venue + aturan harga sewa per jam. Harga akhir mengikuti hari:
 /// Senin–Jumat memakai tarif weekday, Sabtu–Minggu tarif weekend.
@@ -709,45 +703,6 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
   @override
   List<VenueSlot> build() => const [];
 
-  bool _overlaps(int court, DateTime start, DateTime end) => state.any(
-    (s) =>
-        s.court == court &&
-        s.status != SlotStatus.closed &&
-        s.start.isBefore(end) &&
-        start.isBefore(s.end),
-  );
-
-  /// null = sukses, selain itu pesan error.
-  String? add({
-    required int court,
-    required DateTime start,
-    required DateTime end,
-    required int price,
-  }) {
-    if (_overlaps(court, start, end)) return 'Slot bentrok dengan jadwal lain.';
-    state = [
-      ...state,
-      VenueSlot(
-        id: 's${DateTime.now().millisecondsSinceEpoch}',
-        court: court,
-        start: start,
-        end: end,
-        price: price,
-      ),
-    ];
-    return null;
-  }
-
-  void setStatus(String id, SlotStatus status) {
-    state = [
-      for (final s in state) s.id == id ? s.copyWith(status: status) : s,
-    ];
-  }
-
-  void setPrice(String id, int price) {
-    state = [for (final s in state) s.id == id ? s.copyWith(price: price) : s];
-  }
-
   // ── Sisi server (akun venue) ───────────────────────────────────────────
 
   // Satu akun venue bisa punya beberapa venue (venues.owner_id di DB).
@@ -755,7 +710,6 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
   String? _venueId;
   List<VenueSlot> _raw = const [];
   bool _loading = false;
-  bool _loaded = false;
   String? _lastError;
   Future<String?>? _inFlight;
 
@@ -771,11 +725,6 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
   /// atau slot; tombol add di layar harus memicu refresh() dulu.
   bool get hasVenue => _venueId != null;
 
-  /// Server sudah menjawab tapi akun ini tidak punya venue sama sekali
-  /// (mis. akun lama yang role-nya dinaikkan manual) — bukan kegagalan
-  /// muat; layar harus menawarkan membuat venue, bukan muat ulang.
-  bool get missingVenue => _loaded && _venues.isEmpty;
-
   ApiVenue? get venue {
     for (final v in _venues) {
       if (v.id == _venueId) return v;
@@ -786,20 +735,6 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
   List<ApiCourt> get courts => venue?.courts ?? const [];
 
   String? get venueId => _venueId;
-
-  /// Pindah venue tanpa request ulang: slot semua venue sudah di [_raw].
-  void selectVenue(String id) {
-    if (id == _venueId) return;
-    _venueId = id;
-    _applyProfile();
-    _applySlots();
-  }
-
-  void _applyProfile() {
-    final v = venue;
-    if (v == null) return;
-    venueProfile = (name: v.name, city: v.city, courts: v.courts.length);
-  }
 
   void _applySlots() {
     final ids = {for (final c in courts) c.id};
@@ -836,6 +771,18 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     );
   }
 
+  /// Muat ulang setelah menulis: refresh yang sudah berjalan bisa dimulai
+  /// sebelum tulisan masuk, jadi tunggu dulu lalu muat lagi.
+  Future<String?> _reload() async {
+    await _inFlight;
+    return refresh();
+  }
+
+  /// Tulisan sukses tapi muat ulang gagal: jangan tampilkan "berhasil" begitu saja.
+  static String? _afterWrite(String? reloadError) => reloadError == null
+      ? null
+      : 'Tersimpan, tapi data belum termuat ulang: $reloadError';
+
   /// Muat ulang venue + slot 7 hari ke depan. Single-flight: panggilan saat
   /// refresh berjalan berbagi future yang sama supaya tidak request dobel
   /// (layar venue memuat semua tab sekaligus saat shell terbuka).
@@ -856,15 +803,15 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
           ApiVenue.fromJson(_asMap(item)),
       ];
       _venues = mine;
-      _loaded = true;
       final selected = _venueId;
       _venueId = mine.any((v) => v.id == selected)
           ? selected
           : (mine.isEmpty ? null : mine.first.id);
-      _applyProfile();
 
+      // Tanggal WIB, sama dengan grid jadwal (bukan tanggal HP).
+      final today = wibToday();
       final days = <DateTime>[
-        for (var i = 0; i < 7; i++) DateTime.now().add(Duration(days: i)),
+        for (var i = 0; i < 7; i++) today.add(Duration(days: i)),
       ];
       final pages = await Future.wait([for (final day in days) _slotsFor(day)]);
       _raw = [for (final page in pages) ...page];
@@ -895,19 +842,6 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     }
   }
 
-  Future<String?> setStatusRemote(String id, SlotStatus status) async {
-    try {
-      await api.patch(
-        '/venue/slots/$id',
-        body: {'status': status == SlotStatus.closed ? 'BLOCKED' : 'OPEN'},
-      );
-      await refresh();
-      return null;
-    } catch (error) {
-      return apiMessage(error);
-    }
-  }
-
   /// Simpan form lapangan: baru = POST, lama = PATCH. Status aktif tidak
   /// disentuh di sini; on/off lewat [setCourtActive].
   Future<String?> saveCourt(CourtDraft court) async {
@@ -928,12 +862,11 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
       } else {
         await api.patch('/venue/courts/${court.id}', body: court.toJson());
       }
-      return null;
     } catch (error) {
+      await _reload();
       return apiMessage(error);
-    } finally {
-      await refresh();
     }
+    return _afterWrite(await _reload());
   }
 
   /// Aktif = tampil ke pemain dan bisa dipesan. Mati = tersembunyi, riwayat tetap.
@@ -943,11 +876,10 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
         '/venue/courts/${court.id}',
         body: {'status': active ? 'ACTIVE' : 'MAINTENANCE'},
       );
-      await refresh();
-      return null;
     } catch (error) {
       return apiMessage(error);
     }
+    return _afterWrite(await _reload());
   }
 
   /// Tutup satu jam (perbaikan, dipakai sendiri): slot BLOCKED 1 jam.
@@ -966,18 +898,27 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
           'status': 'BLOCKED',
         },
       );
-      await refresh();
-      return null;
     } catch (error) {
       return apiMessage(error);
     }
+    return _afterWrite(await _reload());
   }
 
   /// Buka lagi jam yang ditutup: slot BLOCKED yang menutupi [cell].
   Future<String?> reopenHour(CourtDay day, HourCell cell) async {
-    final slot = blockedAt(day.court.id, cell.start);
+    var slot = blockedAt(day.court.id, cell.start);
+    if (slot == null) {
+      // Cache slot hanya 7 hari / bisa tertinggal; muat ulang sekali.
+      await _reload();
+      slot = blockedAt(day.court.id, cell.start);
+    }
     if (slot == null) return 'Jam ini tidak ditutup.';
-    return setStatusRemote(slot.id, SlotStatus.open);
+    try {
+      await api.patch('/venue/slots/${slot.id}', body: {'status': 'OPEN'});
+    } catch (error) {
+      return apiMessage(error);
+    }
+    return _afterWrite(await _reload());
   }
 
   VenueSlot? blockedAt(String courtId, DateTime start) =>
@@ -1004,25 +945,6 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
       }
     }
     return null;
-  }
-
-  /// Buat venue pertama untuk akun venue yang belum punya venue
-  /// (mis. akun lama yang role-nya dinaikkan manual di database).
-  Future<String?> createVenueRemote({
-    required String name,
-    required String address,
-    required String city,
-  }) async {
-    try {
-      await api.post(
-        '/venue/venues',
-        body: {'name': name, 'address': address, 'city': city},
-      );
-      await refresh();
-      return null;
-    } catch (error) {
-      return apiMessage(error);
-    }
   }
 }
 
@@ -1157,27 +1079,36 @@ Future<List<CourtDay>> loadAvailability(String venueId, DateTime day) async {
 /// Grid jam venue milik akun ini untuk satu tanggal (kunci = tanggal tanpa jam).
 /// Dimuat ulang setiap jadwal venue berubah (refresh, tutup/buka jam).
 final venueDayProvider = FutureProvider.autoDispose
-    .family<List<CourtDay>, DateTime>((ref, day) async {
-      ref.watch(venueSlotsProvider);
-      final id = ref.read(venueSlotsProvider.notifier).venueId;
-      if (id == null) return const [];
-      return loadAvailability(id, day);
-    });
+    .family<List<CourtDay>, DateTime>(
+      (ref, day) async {
+        ref.watch(venueSlotsProvider);
+        final id = ref.read(venueSlotsProvider.notifier).venueId;
+        if (id == null) return const [];
+        return loadAvailability(id, day);
+      },
+      // Error API langsung tampil "gagal dimuat", bukan spinner ~40 detik.
+      retry: (_, _) => null,
+    );
 
 DateTime dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+/// Jam dinding WIB: venue dan server memakai WIB, apa pun zona waktu HP.
+/// Hasilnya hanya untuk tampilan dan tanggal kalender, bukan dikirim ke API.
+DateTime wib(DateTime d) => d.toUtc().add(const Duration(hours: 7));
+
+/// Tanggal hari ini menurut WIB (kunci grid jadwal dan `date` ke API).
+DateTime wibToday() => dayOnly(wib(DateTime.now()));
 
 final venueSlotsProvider =
     NotifierProvider<VenueSlotsNotifier, List<VenueSlot>>(
       VenueSlotsNotifier.new,
     );
 
+/// Slot yang mulai pada tanggal WIB [day].
 List<VenueSlot> slotsOn(List<VenueSlot> all, DateTime day) {
-  final d = DateTime(day.year, day.month, day.day);
-  final list =
-      all
-          .where((s) => DateTime(s.start.year, s.start.month, s.start.day) == d)
-          .toList()
-        ..sort((a, b) => a.start.compareTo(b.start));
+  final d = dayOnly(day);
+  final list = all.where((s) => dayOnly(wib(s.start)) == d).toList()
+    ..sort((a, b) => a.start.compareTo(b.start));
   return list;
 }
 
@@ -2045,35 +1976,6 @@ final filteredLobbiesProvider = Provider<List<Lobby>>((ref) {
     return l.status == LobbyStatus.open || l.status == LobbyStatus.filled;
   }).toList();
 });
-
-/// Statistik venue untuk layar analytics.
-const venueSummary = (
-  bookings: 128,
-  revenue: 18450000,
-  fee: 922500,
-  occupancy: 0.78,
-  noShow: 4,
-);
-
-const peakHours = <(int, int)>[
-  (6, 6),
-  (8, 14),
-  (10, 9),
-  (13, 5),
-  (16, 11),
-  (18, 22),
-  (20, 26),
-  (21, 15),
-];
-
-const monthlyRevenue = <(String, int)>[
-  ('Mei', 8200000),
-  ('Jun', 11400000),
-  ('Jul', 9800000),
-  ('Agu', 14100000),
-  ('Sep', 16500000),
-  ('Okt', 18450000),
-];
 
 /// ── Komunitas ────────────────────────────────────────────────────────────
 

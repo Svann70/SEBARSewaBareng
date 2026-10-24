@@ -18,7 +18,6 @@ import 'features/profile/profile_screen.dart';
 import 'features/rooms/rooms_screen.dart';
 import 'features/venue/court_form.dart';
 import 'features/venue/venue_shell.dart';
-import 'features/venue/venue_tabs.dart';
 import 'features/wallet/wallet_screen.dart';
 
 /// Rute yang boleh dibuka tanpa login.
@@ -72,10 +71,6 @@ final _routes = <RouteBase>[
     builder: (_, s) => TicketScreen(id: s.pathParameters['id']!),
   ),
   GoRoute(path: '/venue', builder: (_, _) => const VenueShell()),
-  GoRoute(
-    path: '/venue/analytics',
-    builder: (_, _) => const VenueAnalyticsScreen(),
-  ),
   GoRoute(path: '/venue/court/new', builder: (_, _) => const CourtFormScreen()),
   GoRoute(
     path: '/venue/court/:id',

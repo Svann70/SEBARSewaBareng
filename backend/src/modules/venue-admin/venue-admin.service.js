@@ -2,7 +2,7 @@ import { query, tx } from '../../db/pool.js';
 import { AppError } from '../../lib/errors.js';
 import { onDateWib } from '../../lib/sql.js';
 import { courtJson } from '../venues/courts.shared.js';
-import { SLOT_SELECT } from '../venues/slots.shared.js';
+import { clearFreeSlots, SLOT_SELECT } from '../venues/slots.shared.js';
 
 // Every query filters on v.owner_id: an admin only sees and changes their own venues (BR-6.1).
 
@@ -135,11 +135,15 @@ async function loadSlot(id) {
 export async function createSlot(ownerId, { courtId, startAt, endAt, price, status }) {
   if (new Date(startAt) <= new Date()) throw new AppError(422, 'VALIDATION_ERROR', 'Slot harus di masa depan.');
   const id = await tx(async (c) => {
+    // Court lock: same order as room creation, so closing an hour and booking it cannot interleave.
     const court = await c.query(
-      `SELECT c.id FROM courts c JOIN venues v ON v.id = c.venue_id WHERE c.id = $1 AND v.owner_id = $2`,
+      `SELECT c.id FROM courts c JOIN venues v ON v.id = c.venue_id WHERE c.id = $1 AND v.owner_id = $2
+          FOR UPDATE OF c`,
       [courtId, ownerId],
     );
     if (!court.rows[0]) throw new AppError(404, 'NOT_FOUND', 'Lapangan tidak ditemukan.');
+    // Closing an hour: leftovers of cancelled rooms must not make a free-looking hour unclosable.
+    if (status === 'BLOCKED') await clearFreeSlots(c, courtId, startAt, endAt);
     try {
       const { rows } = await c.query(
         'INSERT INTO court_slots (court_id, start_at, end_at, price, status) VALUES ($1, $2, $3, $4, $5) RETURNING id',

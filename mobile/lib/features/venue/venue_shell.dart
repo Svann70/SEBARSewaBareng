@@ -175,7 +175,7 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
     final notifier = ref.read(venueSlotsProvider.notifier);
     final venue = notifier.venue;
     final hasActive = venue?.courts.any((c) => c.active) ?? false;
-    final today = dayOnly(DateTime.now());
+    final today = wibToday();
     final grid = ref.watch(venueDayProvider(today));
     final bookings = [
       for (final s in slotsOn(all, today))
@@ -192,10 +192,23 @@ class _VenueHomeState extends ConsumerState<_VenueHome> {
           const SizedBox(height: 16),
           if (notifier.isLoading && venue == null)
             const Center(child: CircularProgressIndicator())
+          else if (venue == null && notifier.lastError != null)
+            // Gagal muat bukan berarti belum punya lapangan.
+            EmptyState(
+              icon: Icons.cloud_off,
+              title: 'Data venue gagal dimuat',
+              message: notifier.lastError!,
+              action: GhostButton(
+                label: 'Muat ulang',
+                icon: Icons.refresh,
+                onPressed: notifier.refresh,
+              ),
+            )
           else if (!hasActive)
             const _SetupPrompt()
           else ...[
             grid.when(
+              skipLoadingOnReload: true,
               data: (courts) => _TodaySummary(courts: courts),
               loading: () => const SizedBox(
                 height: 90,
@@ -306,7 +319,7 @@ class _BookingRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  formatTime(slot.start),
+                  formatTime(wib(slot.start)),
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
@@ -315,7 +328,7 @@ class _BookingRow extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  formatTime(slot.end),
+                  formatTime(wib(slot.end)),
                   style: const TextStyle(fontSize: 12, color: C.faint),
                 ),
               ],

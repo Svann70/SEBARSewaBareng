@@ -1,7 +1,7 @@
 import { query, tx } from '../../db/pool.js';
 import { AppError } from '../../lib/errors.js';
 import { onDateWib } from '../../lib/sql.js';
-import { ACTIVE_LOBBY } from '../venues/slots.shared.js';
+import { clearFreeSlots } from '../venues/slots.shared.js';
 import { cancelLobby, JOIN_CUTOFF_HOURS, joinLobby, leaveLobby } from './membership.service.js';
 
 export const PAGE_SIZE = 20;
@@ -85,9 +85,7 @@ const RATE_SQL = `(CASE WHEN extract(isodow FROM ($4::timestamptz AT TIME ZONE '
 const MAX_DAYS_AHEAD = 60;
 
 // Slot for a room on any free hour inside the court's opening hours. Rooms always pay the court
-// rate (one-time setup). Leftover OPEN slots without an active room (opened by hand, or left by a
-// cancelled/expired room) only mark hours as free: unused ones are deleted, ones a past room still
-// references are released (kept for history, ignored by the overlap rule and the schedule).
+// rate (one-time setup); leftover OPEN slots in the way are cleared by clearFreeSlots.
 async function slotForHours(c, { courtId, startAt, hours }) {
   const start = new Date(startAt);
   if (start.getTime() % 3600_000 !== 0) {
@@ -111,29 +109,7 @@ async function slotForHours(c, { courtId, startAt, hours }) {
   if (!court) throw new AppError(404, 'NOT_FOUND', 'Lapangan tidak ditemukan.');
   if (!court.in_hours) throw new AppError(422, 'VALIDATION_ERROR', 'Jam main di luar jam buka lapangan.');
 
-  // Lock first, then check lobbies in a second statement: a check inside the locking statement would
-  // keep the snapshot from before the lock wait and miss a lobby committed meanwhile.
-  const locked = await c.query(
-    `SELECT s.id FROM court_slots s
-      WHERE s.court_id = $1 AND NOT s.released AND tstzrange(s.start_at, s.end_at) && tstzrange($2, $3)
-        FOR UPDATE OF s`,
-    [courtId, start.toISOString(), end.toISOString()],
-  );
-  const overlap = await c.query(
-    `SELECT s.id, s.status, ${ACTIVE_LOBBY} AS active,
-            EXISTS (SELECT 1 FROM lobbies l WHERE l.slot_id = s.id) AS referenced
-       FROM court_slots s WHERE s.id = ANY($1::uuid[])`,
-    [locked.rows.map((r) => r.id)],
-  );
-  if (overlap.rows.some((s) => s.status === 'BLOCKED')) {
-    throw new AppError(409, 'SLOT_NOT_OPEN', 'Jam ini ditutup pengelola lapangan. Pilih jam lain.');
-  }
-  if (overlap.rows.some((s) => s.status !== 'OPEN' || s.active)) {
-    throw new AppError(409, 'SLOT_NOT_OPEN', 'Jam ini sudah terisi. Pilih jam lain.');
-  }
-  const ids = (pick) => overlap.rows.filter(pick).map((s) => s.id);
-  await c.query('DELETE FROM court_slots WHERE id = ANY($1::uuid[])', [ids((s) => !s.referenced)]);
-  await c.query('UPDATE court_slots SET released = true WHERE id = ANY($1::uuid[])', [ids((s) => s.referenced)]);
+  await clearFreeSlots(c, courtId, start.toISOString(), end.toISOString());
   const { rows } = await c.query(
     'INSERT INTO court_slots (court_id, start_at, end_at, price) VALUES ($1, $2, $3, $4) RETURNING id',
     [courtId, start.toISOString(), end.toISOString(), court.price],

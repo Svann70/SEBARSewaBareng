@@ -39,7 +39,10 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
   final _search = TextEditingController();
 
   int _step = 0;
-  DateTime _date = dayOnly(DateTime.now());
+  DateTime _date = wibToday();
+
+  /// Naik tiap muat grid; respons lama (ganti hari/venue cepat) dibuang.
+  int _gridGen = 0;
   String? _venueId;
   List<CourtDay> _grid = const [];
   String? _gridError;
@@ -114,27 +117,27 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
   Future<void> _loadGrid() async {
     final venueId = _venueId;
     if (venueId == null) return;
+    final gen = ++_gridGen;
     setState(() {
       _loadingGrid = true;
       _gridError = null;
+      _hour = null;
+      _courtId = null;
     });
+    List<CourtDay> grid = const [];
+    String? error;
     try {
-      final grid = await loadAvailability(venueId, _date);
-      if (!mounted) return;
-      setState(() {
-        _grid = grid;
-        _hour = null;
-        _courtId = null;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _grid = const [];
-        _gridError = apiMessage(error);
-      });
-    } finally {
-      if (mounted) setState(() => _loadingGrid = false);
+      grid = await loadAvailability(venueId, _date);
+    } catch (e) {
+      error = apiMessage(e);
     }
+    // Hari/venue sudah diganti selama menunggu: jangan timpa grid yang baru.
+    if (!mounted || gen != _gridGen) return;
+    setState(() {
+      _grid = grid;
+      _gridError = error;
+      _loadingGrid = false;
+    });
   }
 
   void _pickVenue(ApiVenue venue) {
@@ -171,7 +174,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
   /// Nama bawaan, mis. "Tenis Sen". Diganti ikut olahraga selama pemain
   /// belum mengetik nama sendiri.
   String _autoTitle(Sport sport, DateTime start) =>
-      '${sport.label} ${_dayName(start)}';
+      '${sport.label} ${_dayName(wib(start))}';
 
   void _toStep3(_Pick pick) {
     setState(() {
@@ -346,7 +349,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
   // ── Langkah 2: tanggal & jam ─────────────────────────────────────────────
 
   Widget _hourStep(ApiVenue venue) {
-    final today = dayOnly(DateTime.now());
+    final today = wibToday();
     final days = [for (var i = 0; i < 7; i++) today.add(Duration(days: i))];
     final hours = <int>{
       for (final c in _grid)
@@ -621,7 +624,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                   pick == null
                       ? 'Pilih jam dulu'
                       : '${pick.court.name} · '
-                            '${formatTime(pick.start)}–${formatTime(pick.end)}',
+                            '${formatTime(wib(pick.start))}–${formatTime(wib(pick.end))}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -634,7 +637,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                 Text(
                   pick == null
                       ? 'Ketuk jam kosong di jadwal'
-                      : '${formatDate(pick.start)} · ${pick.hours} jam · '
+                      : '${formatDate(wib(pick.start))} · ${pick.hours} jam · '
                             '${rupiah(pick.price)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1190,8 +1193,8 @@ class _VenueSummary extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${formatDate(pick.start)} • '
-                  '${formatTime(pick.start)}–${formatTime(pick.end)}',
+                  '${formatDate(wib(pick.start))} • '
+                  '${formatTime(wib(pick.start))}–${formatTime(wib(pick.end))}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.small,
@@ -1390,7 +1393,7 @@ class _DeadlineBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final deadline = start.subtract(const Duration(hours: 6));
     final label =
-        '6 jam sebelum main • ${_dayName(deadline)} ${formatTime(deadline)}';
+        '6 jam sebelum main • ${_dayName(wib(deadline))} ${formatTime(wib(deadline))}';
 
     return Container(
       height: 52,
