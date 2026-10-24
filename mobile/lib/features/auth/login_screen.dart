@@ -21,6 +21,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final notice = ref.read(authProvider.notifier).takeSessionNotice();
+      if (notice != null && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(notice)));
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _email.dispose();
     _password.dispose();
