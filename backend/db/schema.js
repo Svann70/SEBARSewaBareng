@@ -1,6 +1,6 @@
 // Drizzle schema of the SEBAR database (public schema).
-// Generated with `drizzle-kit pull` from a database built by test/fixtures/schema.sql + drizzle/
-// migrations, then fixed by hand: citext column type, operator classes removed (pull swapped them).
+// Generated with `drizzle-kit pull` from a database built by the drizzle/ migrations, then fixed
+// by hand: citext column type, operator classes removed (pull swapped them).
 // Not represented here, kept as SQL in drizzle/ migrations: triggers, functions, the EXCLUDE
 // constraint on court_slots and RLS policies (every table has RLS on: .enableRLS()).
 // Queries use this schema; migrations stay authoritative.

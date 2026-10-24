@@ -20,9 +20,10 @@ Error `RAISE EXCEPTION 'SEBAR::<KODE>'` dari DB dipetakan ke HTTP di `src/middle
 
 ## Setup
 
-Skema dasar (tabel, trigger, function di `db/*.sql`) sudah ada di Supabase. Perubahan sesudahnya
-adalah migrasi Drizzle di `drizzle/`, dijalankan dengan `npm run db:migrate` (tercatat di
-`drizzle.__drizzle_migrations`, yang sudah jalan dilewati). Skema untuk query: `db/schema.js`.
+Seluruh skema ada di migrasi Drizzle `drizzle/` dan dijalankan dengan `npm run db:migrate` (tercatat
+di `drizzle.__drizzle_migrations`, yang sudah jalan dilewati). `0000_baseline` = skema dasar (enum,
+tabel, function/trigger aturan uang, view, RLS); semua migrasi idempoten, jadi aman juga untuk
+Supabase yang skemanya sudah ada. Skema untuk query: `db/schema.js`.
 
 ```bash
 cd backend
@@ -88,13 +89,11 @@ Tiap modul: `*.routes.js` (path → handler), `*.controller.js` (validasi input,
 
 ## Tes
 
-Tes integrasi butuh Postgres sekali pakai, **bukan** Supabase. `test/fixtures/schema.sql` = hasil
-`pg_dump --schema-only` skema dasar Supabase (tabel, trigger, function); tes menjalankan migrasi
-`drizzle/` sendiri sebelum mulai.
+Tes integrasi butuh Postgres sekali pakai, **bukan** Supabase. Database boleh kosong: tes menjalankan
+migrasi `drizzle/` sendiri sebelum mulai.
 
 ```bash
 docker run -d --name sebar-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=sebar_test -p 127.0.0.1:55432:5432 postgres:17-alpine
-psql postgresql://postgres:test@127.0.0.1:55432/sebar_test -f test/fixtures/schema.sql
 echo 'TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/sebar_test' > .env.test
 npm test
 ```
