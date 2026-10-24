@@ -11,7 +11,7 @@ dan amber, angka besar, dock bawah dengan aksi utama di tengah).
 flutter pub get
 flutter run                 # Android/iOS
 flutter run -d chrome       # web (cek cepat)
-flutter test                # 19 tes
+flutter test                # 21 tes
 ```
 
 APK: `flutter build apk --debug` → `build/app/outputs/flutter-apk/`.
@@ -70,7 +70,7 @@ Pola sama seperti GoFood vs GoFood Merchant, tapi satu APK dan satu pintu masuk:
 - Peran menentukan beranda: `AccountRole.player.home` = `/home`,
   `AccountRole.venue.home` = `/venue`.
 - `DockNav` menerima daftar item, jadi dock venue berbeda: Beranda, Jadwal,
-  Scan, Akun. FAB tengah membuka sheet tambah slot.
+  Scan, Akun. FAB tengah membuka layar Kelola lapangan.
 - Akun venue tidak bisa join room pemain. Untuk pindah peran, keluar dulu
   lewat Akun venue atau Profil pemain.
 - Peran yang dipakai UI datang dari respons `/auth/login` (`sessionProvider`),
@@ -82,18 +82,31 @@ Sumber data `venueSlotsProvider` di `lib/data/state.dart`:
 
 - Slot punya lapangan, jam, harga, dan status (`Kosong`, `Terisi`,
   `Room berjalan`, `Ditutup`).
-- Harga ditentukan **per lapangan** (`courts.price_per_hour`, dikirim API
-  sebagai `pricePerHour`). Sheet buka slot menghitung `tarif × durasi`; slot
-  yang sudah terbit menyimpan harganya sendiri, jadi ubah tarif tidak
-  mengubah slot lama. `Ubah tarif` memanggil `PATCH /venue/courts/:id`.
-- `Tambah lapangan` memanggil `POST /venue/courts` (nama, olahraga, tarif per
-  jam, kapasitas) — perlu karena akun venue baru mendaftar tanpa lapangan.
+- Harga ditentukan **per lapangan** dan **per hari**: harga weekday =
+  `courts.price_per_hour`, harga Sabtu–Minggu = `courts.price_weekend` (NULL =
+  sama dengan weekday; kirim API sebagai `priceWeekend`, migrasi supabase
+  `002_court_price_weekend.sql`). `ApiCourt.rateFor(start)` memilih tarif
+  sesuai hari; slot dihitung `tarif × durasi` saat dibuat; slot yang sudah
+  terbit menyimpan harganya sendiri, jadi simpan tarif tidak mengubah slot
+  lama.
+- `Tambah lapangan` memanggil `POST /venue/courts` (nama, olahraga, tarif
+  weekday/weekend, kapasitas) — perlu karena akun venue baru mendaftar tanpa
+  lapangan.
 - Satu akun venue bisa punya beberapa venue (`venues.owner_id`). Tab Jadwal
   menampilkan chip venue saat akun punya lebih dari satu; `selectVenue`
   memfilter slot tanpa request ulang.
 - Tab Jadwal: strip 7 hari, filter lapangan, ringkasan terisi/kosong/potensi,
-  daftar per lapangan. Tiap header lapangan punya tombol `Ganti foto`. Tap slot
-  membuka sheet tutup/buka dan ubah harga slot.
+  daftar per lapangan. Tiap header lapangan punya tombol `Kelola` yang membuka
+  layar **Kelola lapangan** (`features/venue/venue_courts.dart`, rute
+  `/venue/courts`): foto hero + `Ganti foto utama`, strip galeri (pilih =
+  jadikan foto utama, `+` = tambah foto), nama, **Weekday/Weekend per jam**,
+  catatan sinkron ke room, tombol `Simpan perubahan`, dan daftar lapangan
+  lain (foto + `Belum ada foto` bila kosong). Tombol `+ Lapangan` di header
+  layar memanggil dialog tambah lapangan. Semua tombol tambah (header Jadwal
+  `Lapangan`, FAB dock `Kelola lapangan`, tile Beranda, dan `Kelola` per
+  header lapangan) membuka layar ini; sheet tambah slot per jam sudah
+  dihapus. Tap slot di Jadwal tetap membuka sheet tutup/buka dan ubah
+  harga slot.
 - Slot `Terisi` terkunci; hanya slot kosong yang bisa ditutup. Validasi
   bentrok/watertight sekarang di server (unique + exclusion constraint).
 - Soliditas tab Jadwal: smoke `test/jadwal_smoke.dart` render tab di 360x740
@@ -161,12 +174,16 @@ Palet desain **"Hijau"** (`DesignReference/SEBAR Mobile — Hijau.html`):
 - **Tiket** (`TicketTile`, `TicketScreen`): blok tanggal, judul, jadwal,
   kode QR besar; tab `Siap dipakai / Menunggu / Selesai`.
 - **Dock bawah datar**: 4 tujuan + pil tengah `Buat room` (pemain) /
-  `Buka slot` (venue), hijau `#00A27D` dengan teks tinta.
+  `Kelola lapangan` (venue, membuka `/venue/courts`), hijau `#00A27D`
+  dengan teks tinta.
 - **Skala tipografi** `T`: 12 label, 12 caption, 13 small, 14 body,
   16 h2, 24 h1, 28 display, 32 metrik. Tidak ada teks di bawah 12px.
-- **Foto lapangan dikelola venue** (`CourtPhoto` + `courtPhotosProvider`),
-  bisa diganti dari venue: tombol `Ganti foto` di header tiap lapangan (tab
-  Jadwal) dan di sheet detail slot. Fallback hijau + ikon bila gagal muat.
+- **Foto lapangan dikelola venue** (`CourtPhoto` + `courtPhotosProvider`,
+  galeri di `courtGalleriesProvider`), bisa diganti dari layar Kelola lapangan
+  (`/venue/courts`): foto hero, strip galeri (pilih = foto utama, `+` = tambah
+  prasetel/tautan), dan di pill `Ganti foto` pada sheet detail slot. Foto sama
+  dipakai room pemain karena membaca kunci `courtPhotoKey` yang sama.
+  Fallback hijau + ikon bila gagal muat.
 - **Teks pengguna tanpa istilah internal**: kode ledger dipetakan ke label
   manusia (`WalletEntryX.typeLabel`), pesan scan memakai kalimat biasa.
 
@@ -189,4 +206,6 @@ bila ingin persis.
 - `test/screens_test.dart` - smoke semua layar di 360x740 tanpa overflow
 - `test/jadwal_smoke.dart` - smoke tab Jadwal via dock + standalone, 360x740
   (menangkap overflow RenderFlex; lihat "Jadwal venue")
+- `test/court_rate_test.dart` - T-07 `ApiCourt.rateFor`: weekend Sabtu/Minggu,
+  fallback ke harga weekday
 - `test/lobby_detail_test.dart`, `test/widget_test.dart` - render dasar

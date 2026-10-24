@@ -35,8 +35,17 @@ Supabase:
    Tanpa CA, server menolak start bila host DB bukan localhost.
 3. Pastikan RLS aktif di semua tabel (Data API/anon key tidak boleh akses langsung); backend memakai koneksi owner.
 
-Sekali saja: jalankan `db/supabase/001_refresh_tokens.sql` di Supabase SQL Editor (tabel `refresh_tokens`).
-Tanpa tabel ini, register/login gagal.
+Sekali saja, berurutan, di Supabase SQL Editor:
+1. `db/supabase/001_refresh_tokens.sql` (tabel `refresh_tokens`). Tanpa ini, register/login gagal.
+2. `db/supabase/002_court_price_weekend.sql` (kolom `courts.price_weekend`, harga Sabtu–Minggu).
+3. `db/supabase/003_court_setup.sql` (jam buka–tutup, lapangan serbaguna `court_sports`, olahraga
+   Basket/Tenis/Padel, kolom `court_slots.released`). Tanpa 002 + 003, katalog venue, buat room,
+   dan `npm run seed` gagal.
+
+Setup lapangan sekali di awal: semua jam di dalam jam buka bisa disewa tanpa pemilik membuka slot.
+Room selalu memakai tarif lapangan (weekday/weekend × durasi). Slot `OPEN` tanpa room aktif hanya
+penanda jam kosong: saat jamnya dipesan, slot itu dihapus (atau `released` bila masih dirujuk room
+lama yang batal/kedaluwarsa). Pemilik menutup jam lewat `POST /venue/slots` dengan `status: BLOCKED`.
 
 Flag `.env`:
 - `AUTH_RATE_LIMIT` (20/menit/IP untuk register/login, 5× itu untuk refresh/logout) dan `LOGIN_RATE_LIMIT`
@@ -111,18 +120,20 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | GET | `/me/bookings` | semua | - | 200 `{items}` | |
 | GET | `/venues` | semua | city?, sport? | 200 `{items}` + courts | |
 | GET | `/venues/:id/slots` | semua | date | 200 `{items}` | 422 |
+| GET | `/venues/:id/availability` | semua | date | 200 `{date, weekend, courts[]}`; tiap court + `rate` (harga/jam hari itu) + `hours[] {hour, start, status}` dengan status `FREE`/`TAKEN`/`CLOSED`/`PAST` | 422 |
 | GET | `/lobbies` | semua | city?, sport?, date?, minScore?, page? | 200 `{items, page}` | |
-| POST | `/lobbies` | PLAYER | slotId, title, quota (2–30), minReliability? | 201 lobby (host ikut + hold) | 409 slot sudah ada lobby / `SLOT_NOT_OPEN` / >3 lobby aktif, 409 saldo, 422 |
+| POST | `/lobbies` | PLAYER | title, quota (2–30), minReliability?, **dan** slotId **atau** courtId + startAt (awal jam) + hours (1–3) + sport? | 201 lobby (host ikut + hold). Mode courtId: slot dibuat otomatis, harga = tarif weekday/weekend × hours | 409 jam terisi/ditutup (`SLOT_NOT_OPEN`) / >3 lobby aktif, 409 saldo, 422 di luar jam buka / kuota > kapasitas olahraga / olahraga tidak ada di lapangan |
 | GET | `/lobbies/:id` | semua | - | 200 lobby + members | 404 |
 | POST | `/lobbies/:id/join` | PLAYER | - | 201 `{member, booking}` (200 bila sudah join; `booking` terisi bila lobby penuh) | 409 `LOBBY_FULL`, 409 `INSUFFICIENT_AVAILABLE_BALANCE`, 409 `ALREADY_JOINED` (pernah keluar), 403 `SCORE_TOO_LOW`, 410 `DEADLINE_PASSED` |
 | DELETE | `/lobbies/:id/members/me` | semua | - | 200 `{released}` | 409 sudah confirm / host, 410 |
 | DELETE | `/lobbies/:id` | host | - | 200 `{refundedMembers}` | 403, 409, 410 lewat deadline |
 | GET | `/venue/venues` | VENUE_ADMIN | - | 200 venue + courts milik sendiri | 403 |
 | POST | `/venue/venues` | VENUE_ADMIN | name (3–120), address (5–300), city (2–60), description? | 201 venue (untuk akun yang belum punya venue) | 403, 422 |
-| POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sport (`BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`), pricePerHour, capacity (2–30) | 201 court | 404 venue bukan milik |
-| PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, pricePerHour?, capacity?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik |
+| PATCH | `/venue/venues/:id` | VENUE_ADMIN | name?, address?, city?, description? (minimal satu) | 200 venue | 404 bukan milik, 422 |
+| POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sports `[{sport, capacity}]` (atau sport + capacity), pricePerHour (weekday), priceWeekend?, openTime? (`HH:00`, default 06:00), closeTime? (`HH:00`, ≤ 24:00, default 22:00). sport: `BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`/`BASKETBALL`/`TENNIS`/`PADEL` | 201 court | 404 venue bukan milik, 409 nama dobel, 422 |
+| PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, sports? (ganti semua), pricePerHour?, priceWeekend?, capacity?, openTime?, closeTime?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik, 422 jam tutup ≤ jam buka |
 | GET | `/venue/slots` | VENUE_ADMIN | date, venueId? | 200 `{items}` | 403 |
-| POST | `/venue/slots` | VENUE_ADMIN | courtId, startAt, endAt, price | 201 slot | 409 bentrok, 404 bukan milik |
+| POST | `/venue/slots` | VENUE_ADMIN | courtId, startAt, endAt, price, status? (`OPEN`/`BLOCKED`; `BLOCKED` = tutup jam itu) | 201 slot | 409 bentrok, 404 bukan milik |
 | PATCH | `/venue/slots/:id` | VENUE_ADMIN | status? (`OPEN`/`BLOCKED`), price? | 200 slot | 409 sudah ada lobby/booking |
 
 Rencana perubahan DB + endpoint untuk desain baru ada di `DESIGN_CHANGES.md`.

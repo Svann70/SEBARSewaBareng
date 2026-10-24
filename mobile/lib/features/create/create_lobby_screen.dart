@@ -8,11 +8,11 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../data/state.dart';
 
-/// Buat room 3 langkah mengikuti referensi desain:
-/// 1) pilih venue, 2) pilih tanggal + slot, 3) atur room.
+/// Buat room 3 langkah: 1) pilih venue, 2) pilih tanggal + jam, 3) atur room.
 ///
-/// Slot tetap dipilih dari server, jadi room tidak mungkin dibuat untuk jam
-/// yang belum dibuka venue. Ringkasan harga dan tombol ada di footer tetap.
+/// Jam diambil dari jam buka lapangan (GET /venues/:id/availability): semua
+/// jam kosong bisa dipilih tanpa venue membuka slot dulu. Slot dibuat server
+/// saat room dibuat. Ringkasan harga dan tombol ada di footer tetap.
 class CreateLobbyScreen extends ConsumerStatefulWidget {
   const CreateLobbyScreen({super.key});
 
@@ -20,20 +20,42 @@ class CreateLobbyScreen extends ConsumerStatefulWidget {
   ConsumerState<CreateLobbyScreen> createState() => _CreateLobbyScreenState();
 }
 
+/// Jam main yang dipilih: lapangan, jam mulai, durasi.
+class _Pick {
+  const _Pick(this.day, this.hour, this.hours);
+
+  final CourtDay day;
+  final int hour;
+  final int hours;
+
+  ApiCourt get court => day.court;
+  DateTime get start => day.hours.firstWhere((h) => h.hour == hour).start;
+  DateTime get end => start.add(Duration(hours: hours));
+  int get price => day.rate * hours;
+}
+
 class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
   final _title = TextEditingController();
   final _search = TextEditingController();
 
   int _step = 0;
-  DateTime _date = DateTime.now();
+  DateTime _date = wibToday();
+
+  /// Naik tiap muat grid; respons lama (ganti hari/venue cepat) dibuang.
+  int _gridGen = 0;
   String? _venueId;
+  List<CourtDay> _grid = const [];
+  String? _gridError;
+  bool _loadingGrid = false;
   String? _courtId;
-  String? _slotId;
+  int? _hour;
+  int _hours = 1;
   int _quota = 8;
-  List<ApiSlot> _slots = const [];
-  bool _loadingSlots = false;
   bool _busy = false;
+
+  /// Filter cabang di langkah 1; juga olahraga room di langkah 3.
   Sport? _sport;
+  Sport? _playSport;
 
   @override
   void initState() {
@@ -55,37 +77,66 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     return null;
   }
 
-  ApiCourt? _courtOf(ApiVenue? venue) {
-    if (venue == null) return null;
-    for (final c in venue.courts) {
-      if (c.id == _courtId) return c;
-    }
-    return venue.courts.isEmpty ? null : venue.courts.first;
-  }
-
-  ApiSlot? get _slot {
-    for (final s in _slots) {
-      if (s.id == _slotId) return s;
+  CourtDay? get _courtDay {
+    for (final c in _grid) {
+      if (c.court.id == _courtId) return c;
     }
     return null;
   }
 
-  int get _capacity =>
-      (_courtOf(_venueOf(ref.read(venuesProvider)))?.capacity.clamp(2, 30)) ??
-      8;
+  /// Pilihan lengkap bila semua jam dalam durasi kosong.
+  _Pick? get _pick {
+    final day = _courtDay;
+    final hour = _hour;
+    if (day == null || hour == null) return null;
+    for (var h = hour; h < hour + _hours; h++) {
+      if (!day.hours.any((c) => c.hour == h && c.state == HourState.free)) {
+        return null;
+      }
+    }
+    return _Pick(day, hour, _hours);
+  }
 
-  Future<void> _loadSlots() async {
-    final venue = _venueOf(ref.read(venuesProvider));
-    if (venue == null) return;
-    setState(() => _loadingSlots = true);
-    final slots = await ref
-        .read(venuesProvider.notifier)
-        .slots(venue.id, _date);
-    if (!mounted) return;
+  Sport get _sportToPlay {
+    final court = _courtDay?.court;
+    final sports = court?.allSports ?? const <CourtSport>[];
+    if (sports.any((s) => s.sport == _playSport)) return _playSport!;
+    if (sports.any((s) => s.sport == _sport)) return _sport!;
+    return sports.isEmpty ? Sport.badminton : sports.first.sport;
+  }
+
+  int get _capacity {
+    final court = _courtDay?.court;
+    if (court == null) return 8;
+    for (final s in court.allSports) {
+      if (s.sport == _sportToPlay) return s.capacity.clamp(2, 30);
+    }
+    return court.capacity.clamp(2, 30);
+  }
+
+  Future<void> _loadGrid() async {
+    final venueId = _venueId;
+    if (venueId == null) return;
+    final gen = ++_gridGen;
     setState(() {
-      _slots = slots;
-      _loadingSlots = false;
-      _slotId = null;
+      _loadingGrid = true;
+      _gridError = null;
+      _hour = null;
+      _courtId = null;
+    });
+    List<CourtDay> grid = const [];
+    String? error;
+    try {
+      grid = await loadAvailability(venueId, _date);
+    } catch (e) {
+      error = apiMessage(e);
+    }
+    // Hari/venue sudah diganti selama menunggu: jangan timpa grid yang baru.
+    if (!mounted || gen != _gridGen) return;
+    setState(() {
+      _grid = grid;
+      _gridError = error;
+      _loadingGrid = false;
     });
   }
 
@@ -98,29 +149,40 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
       );
       return;
     }
-    final court = venue.courts.isEmpty ? null : venue.courts.first;
     setState(() {
       _venueId = venue.id;
-      _courtId = court?.id;
-      _quota = court == null ? 8 : court.capacity.clamp(2, 30);
       _title.clear();
       _step = 1;
     });
-    _loadSlots();
+    _loadGrid();
   }
 
   Future<void> _pickDay(DateTime day) async {
     setState(() => _date = day);
-    await _loadSlots();
+    await _loadGrid();
   }
 
-  void _pickSlot(ApiSlot slot) {
+  void _pickHour(CourtDay day, HourCell cell) {
     setState(() {
-      _slotId = slot.id;
-      _courtId = slot.courtId;
+      _courtId = day.court.id;
+      _hour = cell.hour;
+      _playSport = null;
+      _quota = _quota.clamp(2, _capacity);
+    });
+  }
+
+  /// Nama bawaan, mis. "Tenis Sen". Diganti ikut olahraga selama pemain
+  /// belum mengetik nama sendiri.
+  String _autoTitle(Sport sport, DateTime start) =>
+      '${sport.label} ${_dayName(wib(start))}';
+
+  void _toStep3(_Pick pick) {
+    setState(() {
       if (_title.text.trim().isEmpty) {
-        _title.text = '${slot.sport.label} ${_dayName(slot.start)}';
+        _title.text = _autoTitle(_sportToPlay, pick.start);
       }
+      _quota = _quota.clamp(2, _capacity);
+      _step = 2;
     });
   }
 
@@ -165,7 +227,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     if (picked != null) setState(() => _quota = picked);
   }
 
-  Future<void> _submit(ApiSlot slot) async {
+  Future<void> _submit(_Pick pick) async {
     if (_busy) return;
     if (_title.text.trim().isEmpty) {
       ScaffoldMessenger.of(
@@ -176,8 +238,11 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     setState(() => _busy = true);
     final error = await ref
         .read(lobbiesProvider.notifier)
-        .createRemote(
-          slotId: slot.id,
+        .createForHours(
+          courtId: pick.court.id,
+          start: pick.start,
+          hours: pick.hours,
+          sport: _sportToPlay,
           title: _title.text.trim(),
           quota: _quota,
         );
@@ -189,7 +254,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
       ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
-    final perPerson = pricePerPerson(slot.price, _quota);
+    final perPerson = pricePerPerson(pick.price, _quota);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -204,7 +269,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
   Widget build(BuildContext context) {
     final venues = ref.watch(venuesProvider);
     final venue = _venueOf(venues);
-    final slot = _slot;
+    final pick = _pick;
 
     return Scaffold(
       body: SafeArea(
@@ -214,14 +279,16 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
             Expanded(
               child: switch (_step) {
                 0 => _venueStep(venues),
-                1 => venue == null ? _venueStep(venues) : _slotStep(venue),
+                1 => venue == null ? _venueStep(venues) : _hourStep(venue),
                 _ =>
-                  venue == null ? _venueStep(venues) : _detailStep(venue, slot),
+                  venue == null || pick == null
+                      ? _venueStep(venues)
+                      : _detailStep(venue, pick),
               },
             ),
-            if (_step == 1 && venue != null) _slotFooter(slot),
-            if (_step == 2 && venue != null && slot != null)
-              _detailFooter(slot),
+            if (_step == 1 && venue != null) _hourFooter(pick),
+            if (_step == 2 && venue != null && pick != null)
+              _detailFooter(pick),
           ],
         ),
       ),
@@ -235,8 +302,9 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     final list = [
       for (final v in venues)
         if ((_sport == null ||
-                v.courts.any((c) => c.sport == _sport) ||
-                v.courts.isEmpty) &&
+                v.courts.any(
+                  (c) => c.allSports.any((s) => s.sport == _sport),
+                )) &&
             (query.isEmpty ||
                 v.name.toLowerCase().contains(query) ||
                 v.city.toLowerCase().contains(query)))
@@ -278,15 +346,15 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     );
   }
 
-  // ── Langkah 2: tanggal & slot ────────────────────────────────────────────
+  // ── Langkah 2: tanggal & jam ─────────────────────────────────────────────
 
-  Widget _slotStep(ApiVenue venue) {
-    final days = [
-      for (var i = 0; i < 7; i++)
-        DateTime(_date.year, _date.month, _date.day).add(Duration(days: i)),
-    ];
-    final hours = <int>{for (final s in _slots) s.start.hour}.toList()..sort();
-    final courts = venue.courts;
+  Widget _hourStep(ApiVenue venue) {
+    final today = wibToday();
+    final days = [for (var i = 0; i < 7; i++) today.add(Duration(days: i))];
+    final hours = <int>{
+      for (final c in _grid)
+        for (final h in c.hours) h.hour,
+    }.toList()..sort();
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -303,90 +371,114 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
             scrollDirection: Axis.horizontal,
             itemCount: days.length,
             separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (_, i) {
-              final day = days[i];
-              final active =
-                  day.day == _date.day &&
-                  day.month == _date.month &&
-                  day.year == _date.year;
-              return _DayChip(
-                day: day,
-                active: active,
-                onTap: () => _pickDay(day),
-              );
-            },
+            itemBuilder: (_, i) => _DayChip(
+              day: days[i],
+              active: days[i] == _date,
+              onTap: () => _pickDay(days[i]),
+            ),
           ),
         ),
         const SizedBox(height: 14),
-        if (_loadingSlots)
+        if (_loadingGrid)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
             child: Center(child: CircularProgressIndicator()),
           )
-        else if (courts.isEmpty)
+        else if (_gridError != null)
+          EmptyState(
+            icon: Icons.error_outline,
+            title: 'Jadwal gagal dimuat',
+            message: _gridError!,
+            action: GhostButton(
+              label: 'Coba lagi',
+              icon: Icons.refresh,
+              onPressed: _loadGrid,
+            ),
+          )
+        else if (_grid.isEmpty)
           const EmptyState(
             icon: Icons.stadium_outlined,
             title: 'Belum ada lapangan',
-            message: 'Venue ini belum membuka lapangan untuk dipesan.',
+            message: 'Venue ini belum menyiapkan lapangan untuk dipesan.',
           )
         else ...[
-          if (_slots.isEmpty)
-            const EmptyState(
-              icon: Icons.event_busy_outlined,
-              title: 'Belum ada slot',
-              message: 'Pilih tanggal lain atau minta venue membuka slot.',
-            )
-          else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const SizedBox(width: 48),
-                      for (final court in courts)
-                        SizedBox(
-                          width: 96,
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  court.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: C.ink,
-                                  ),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const SizedBox(width: 48),
+                    for (final c in _grid)
+                      SizedBox(
+                        width: 96,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                c.court.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: C.ink,
                                 ),
-                                Text(
-                                  '${_shortRupiah(court.pricePerHour)}/jam',
-                                  style: T.caption,
-                                ),
-                              ],
-                            ),
+                              ),
+                              Text(
+                                '${_shortRupiah(c.rate)}/jam',
+                                style: T.caption,
+                              ),
+                            ],
                           ),
                         ),
-                    ],
+                      ),
+                  ],
+                ),
+                const Divider(height: 1, color: C.line),
+                for (final hour in hours)
+                  _HourRow(
+                    hour: hour,
+                    grid: _grid,
+                    courtId: _courtId,
+                    from: _hour,
+                    hours: _hours,
+                    onPick: _pickHour,
                   ),
-                  const Divider(height: 1, color: C.line),
-                  for (final hour in hours)
-                    _SlotRow(
-                      hour: hour,
-                      courts: courts,
-                      slots: _slots,
-                      selectedId: _slotId,
-                      onPick: _pickSlot,
-                    ),
-                ],
-              ),
+              ],
             ),
+          ),
           const SizedBox(height: 12),
           const _Legend(),
+          const SizedBox(height: 18),
+          const _Label('Durasi main'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (final h in const [1, 2, 3])
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: h == 3 ? 0 : 8),
+                    child: _ChoiceChip(
+                      label: '$h jam',
+                      selected: _hours == h,
+                      onTap: () => setState(() => _hours = h),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (_hour != null && _pick == null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Jam setelah ${_hour.toString().padLeft(2, '0')}:00 tidak cukup '
+              'untuk $_hours jam. Pilih jam lain atau kurangi durasi.',
+              style: T.small.copyWith(color: C.danger),
+            ),
+          ],
         ],
       ],
     );
@@ -394,14 +486,13 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
 
   // ── Langkah 3: atur room ─────────────────────────────────────────────────
 
-  Widget _detailStep(ApiVenue venue, ApiSlot? slot) {
-    final court = _courtOf(venue);
-    final price = slot?.price ?? 0;
+  Widget _detailStep(ApiVenue venue, _Pick pick) {
     final capacity = _capacity;
     final options = [
-      for (final value in const [4, 6, 8])
+      for (final value in const [4, 6, 8, 10])
         if (value <= capacity) value,
     ];
+    final sports = pick.court.allSports;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -413,13 +504,39 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
           onBack: () => setState(() => _step = 1),
         ),
         const SizedBox(height: 14),
-        if (slot != null)
-          _VenueSummary(
-            venue: venue,
-            court: court,
-            slot: slot,
-            onChange: () => setState(() => _step = 1),
+        _VenueSummary(
+          venue: venue,
+          pick: pick,
+          onChange: () => setState(() => _step = 1),
+        ),
+        if (sports.length > 1) ...[
+          const SizedBox(height: 22),
+          const _Label('Olahraga'),
+          const SizedBox(height: 4),
+          const Text(
+            'Lapangan serbaguna: pilih yang akan dimainkan.',
+            style: T.small,
           ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final s in sports)
+                _ChoiceChip(
+                  label: '${s.sport.label} · ${s.capacity} orang',
+                  selected: _sportToPlay == s.sport,
+                  onTap: () => setState(() {
+                    if (_title.text == _autoTitle(_sportToPlay, pick.start)) {
+                      _title.text = _autoTitle(s.sport, pick.start);
+                    }
+                    _playSport = s.sport;
+                    _quota = _quota.clamp(2, s.capacity);
+                  }),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 22),
         const _Label('Nama room'),
         const SizedBox(height: 8),
@@ -440,8 +557,9 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
         const SizedBox(height: 22),
         const _Label('Jumlah orang'),
         const SizedBox(height: 4),
-        const Text(
-          'Termasuk kamu. Harga per orang ikut berubah.',
+        Text(
+          'Termasuk kamu. Maksimal $capacity orang untuk '
+          '${_sportToPlay.label}. Harga per orang ikut berubah.',
           style: T.small,
         ),
         const SizedBox(height: 10),
@@ -454,12 +572,14 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                   child: _QuotaChip(
                     value: value == 0 ? null : value,
                     total: _quota,
+                    options: options,
                     capacity: capacity,
-                    pricePerPerson: slot == null
-                        ? 0
-                        : pricePerPerson(price, value == 0 ? _quota : value),
+                    pricePerPerson: pricePerPerson(
+                      pick.price,
+                      value == 0 ? _quota : value,
+                    ),
                     onTap: () => value == 0
-                        ? _pickQuota(capacity, price)
+                        ? _pickQuota(capacity, pick.price)
                         : setState(() => _quota = value),
                   ),
                 ),
@@ -479,7 +599,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
         const SizedBox(height: 22),
         const _Label('Batas kumpul'),
         const SizedBox(height: 8),
-        _DeadlineBox(slot: slot),
+        _DeadlineBox(start: pick.start),
         const SizedBox(height: 8),
         const Text(
           'Kalau absen belum penuh, room batal dan semua dana dilepas.',
@@ -491,8 +611,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
 
   // ── Footer tetap ─────────────────────────────────────────────────────────
 
-  Widget _slotFooter(ApiSlot? slot) {
-    final court = _courtOf(_venueOf(ref.read(venuesProvider)));
+  Widget _hourFooter(_Pick? pick) {
     return _FooterBar(
       child: Row(
         children: [
@@ -502,10 +621,10 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  slot == null
-                      ? 'Pilih slot dulu'
-                      : '${court?.name ?? slot.courtName} · '
-                            '${formatTime(slot.start)}–${formatTime(slot.end)}',
+                  pick == null
+                      ? 'Pilih jam dulu'
+                      : '${pick.court.name} · '
+                            '${formatTime(wib(pick.start))}–${formatTime(wib(pick.end))}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -516,10 +635,10 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  slot == null
-                      ? 'Ketuk kotak kosong di jadwal'
-                      : '${formatDate(slot.start)} · '
-                            '${_duration(slot)} · ${rupiah(slot.price)}',
+                  pick == null
+                      ? 'Ketuk jam kosong di jadwal'
+                      : '${formatDate(wib(pick.start))} · ${pick.hours} jam · '
+                            '${rupiah(pick.price)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.caption,
@@ -534,7 +653,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
               label: 'Lanjut',
               height: 48,
               radius: 999,
-              onPressed: slot == null ? null : () => setState(() => _step = 2),
+              onPressed: pick == null ? null : () => _toStep3(pick),
             ),
           ),
         ],
@@ -542,9 +661,8 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     );
   }
 
-  Widget _detailFooter(ApiSlot slot) {
-    final price = slot.price;
-    final perPerson = pricePerPerson(price, _quota);
+  Widget _detailFooter(_Pick pick) {
+    final perPerson = pricePerPerson(pick.price, _quota);
     return _FooterBar(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -554,7 +672,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
             children: [
               Expanded(
                 child: Text(
-                  '${rupiah(price)} ÷ $_quota orang',
+                  '${rupiah(pick.price)} ÷ $_quota orang',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.caption,
@@ -584,7 +702,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
             height: 50,
             radius: 999,
             busy: _busy,
-            onPressed: _busy ? null : () => _submit(slot),
+            onPressed: _busy ? null : () => _submit(pick),
           ),
         ],
       ),
@@ -833,27 +951,22 @@ class _DayChip extends StatelessWidget {
   }
 }
 
-class _SlotRow extends StatelessWidget {
-  const _SlotRow({
+class _HourRow extends StatelessWidget {
+  const _HourRow({
     required this.hour,
-    required this.courts,
-    required this.slots,
-    required this.selectedId,
+    required this.grid,
+    required this.courtId,
+    required this.from,
+    required this.hours,
     required this.onPick,
   });
 
   final int hour;
-  final List<ApiCourt> courts;
-  final List<ApiSlot> slots;
-  final String? selectedId;
-  final ValueChanged<ApiSlot> onPick;
-
-  ApiSlot? _slotOf(ApiCourt court) {
-    for (final s in slots) {
-      if (s.courtId == court.id && s.start.hour == hour) return s;
-    }
-    return null;
-  }
+  final List<CourtDay> grid;
+  final String? courtId;
+  final int? from;
+  final int hours;
+  final void Function(CourtDay, HourCell) onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -866,20 +979,27 @@ class _SlotRow extends StatelessWidget {
             style: T.caption,
           ),
         ),
-        for (final court in courts)
+        for (final day in grid)
           SizedBox(
             width: 96,
             child: Padding(
               padding: const EdgeInsets.all(3),
               child: Builder(
                 builder: (_) {
-                  final slot = _slotOf(court);
-                  return _SlotCell(
-                    slot: slot,
-                    // Tanpa slot bukan "dipilih" walau belum ada pilihan
-                    // (null == null).
-                    selected: slot != null && slot.id == selectedId,
-                    onTap: onPick,
+                  HourCell? cell;
+                  for (final h in day.hours) {
+                    if (h.hour == hour) cell = h;
+                  }
+                  final start = from;
+                  final selected =
+                      day.court.id == courtId &&
+                      start != null &&
+                      hour >= start &&
+                      hour < start + hours;
+                  return _HourCell(
+                    cell: cell,
+                    selected: selected,
+                    onTap: cell == null ? null : () => onPick(day, cell!),
                   );
                 },
               ),
@@ -890,48 +1010,47 @@ class _SlotRow extends StatelessWidget {
   }
 }
 
-class _SlotCell extends StatelessWidget {
-  const _SlotCell({
-    required this.slot,
+class _HourCell extends StatelessWidget {
+  const _HourCell({
+    required this.cell,
     required this.selected,
     required this.onTap,
   });
 
-  final ApiSlot? slot;
+  /// null = di luar jam buka lapangan ini.
+  final HourCell? cell;
   final bool selected;
-  final ValueChanged<ApiSlot> onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final open = slot?.isOpen ?? false;
+    final free = cell?.state == HourState.free;
     final label = selected
         ? 'Dipilih'
-        : slot == null
-        ? 'Tutup'
-        : open
-        ? ''
-        : 'Terisi';
+        : switch (cell?.state) {
+            null || HourState.closed => 'Tutup',
+            HourState.taken => 'Terisi',
+            HourState.past => 'Lewat',
+            HourState.free => '',
+          };
     final background = selected
         ? C.primaryFill
-        : open
+        : free
         ? C.surface
         : C.surfaceAlt;
-    final border = selected
-        ? Border.all(color: C.primaryCheck)
-        : Border.all(color: C.line);
 
     return Material(
       color: background,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: open ? () => onTap(slot!) : null,
+        onTap: free ? onTap : null,
         child: Container(
           height: 44,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(10),
-            border: border,
+            border: Border.all(color: selected ? C.primaryCheck : C.line),
           ),
           child: Text(
             label,
@@ -941,6 +1060,49 @@ class _SlotCell extends StatelessWidget {
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: selected ? C.ink : C.faint,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChoiceChip extends StatelessWidget {
+  const _ChoiceChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? C.primarySoft : C.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? C.primaryCheck : C.line,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: selected ? C.primaryDeep : C.ink,
             ),
           ),
         ),
@@ -961,7 +1123,7 @@ class _Legend extends StatelessWidget {
         for (final (label, color, filled) in [
           ('Kosong', C.surface, false),
           ('Pilihmu', C.primaryFill, true),
-          ('Terisi', C.surfaceAlt, true),
+          ('Terisi / tutup', C.surfaceAlt, true),
         ])
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -987,14 +1149,12 @@ class _Legend extends StatelessWidget {
 class _VenueSummary extends StatelessWidget {
   const _VenueSummary({
     required this.venue,
-    required this.court,
-    required this.slot,
+    required this.pick,
     required this.onChange,
   });
 
   final ApiVenue venue;
-  final ApiCourt? court;
-  final ApiSlot slot;
+  final _Pick pick;
   final VoidCallback onChange;
 
   @override
@@ -1022,7 +1182,7 @@ class _VenueSummary extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${venue.name} • ${court?.name ?? slot.courtName}',
+                  '${venue.name} • ${pick.court.name}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -1033,13 +1193,16 @@ class _VenueSummary extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${formatDate(slot.start)} • '
-                  '${formatTime(slot.start)}–${formatTime(slot.end)}',
+                  '${formatDate(wib(pick.start))} • '
+                  '${formatTime(wib(pick.start))}–${formatTime(wib(pick.end))}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.small,
                 ),
-                Text(rupiah(slot.price), style: T.small),
+                Text(
+                  '${rupiah(pick.price)} · ${_shortRupiah(pick.day.rate)}/jam',
+                  style: T.small,
+                ),
               ],
             ),
           ),
@@ -1065,6 +1228,7 @@ class _QuotaChip extends StatelessWidget {
   const _QuotaChip({
     required this.value,
     required this.total,
+    required this.options,
     required this.capacity,
     required this.pricePerPerson,
     required this.onTap,
@@ -1073,15 +1237,14 @@ class _QuotaChip extends StatelessWidget {
   /// null = "Lain".
   final int? value;
   final int total;
+  final List<int> options;
   final int capacity;
   final int pricePerPerson;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final selected = value == null
-        ? ![4, 6, 8].contains(total)
-        : value == total;
+    final selected = value == null ? !options.contains(total) : value == total;
     final title = value?.toString() ?? 'Lain';
     final subtitle = value == null
         ? '2–$capacity'
@@ -1222,17 +1385,15 @@ class _AccessRow extends StatelessWidget {
 }
 
 class _DeadlineBox extends StatelessWidget {
-  const _DeadlineBox({required this.slot});
+  const _DeadlineBox({required this.start});
 
-  final ApiSlot? slot;
+  final DateTime start;
 
   @override
   Widget build(BuildContext context) {
-    final deadline = slot?.start.subtract(const Duration(hours: 6));
-    final label = deadline == null
-        ? '6 jam sebelum main'
-        : '6 jam sebelum main • ${_dayName(deadline)} '
-              '${formatTime(deadline)}';
+    final deadline = start.subtract(const Duration(hours: 6));
+    final label =
+        '6 jam sebelum main • ${_dayName(wib(deadline))} ${formatTime(wib(deadline))}';
 
     return Container(
       height: 52,
@@ -1309,12 +1470,6 @@ class _FooterBar extends StatelessWidget {
 String _dayName(DateTime d) {
   const days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
   return days[d.weekday - 1];
-}
-
-String _duration(ApiSlot slot) {
-  final minutes = slot.end.difference(slot.start).inMinutes;
-  if (minutes % 60 == 0) return '${minutes ~/ 60} jam';
-  return '$minutes menit';
 }
 
 /// "Rp100 rb" — ringkas untuk chip kuota dan daftar venue.

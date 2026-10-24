@@ -1,8 +1,9 @@
-import { slotDto } from '../venues/slots.shared.js';
+import { venueSlotDto } from '../venues/slots.shared.js';
 import {
   createCourtSchema,
   createSlotSchema,
   createVenueSchema,
+  patchVenueSchema,
   idSchema,
   patchCourtSchema,
   patchSlotSchema,
@@ -18,6 +19,11 @@ export async function createVenue(req, res) {
   res.status(201).json(await service.createVenue(req.user.id, createVenueSchema.parse(req.body)));
 }
 
+export async function updateVenue(req, res) {
+  const { id } = idSchema.parse(req.params);
+  res.json(await service.updateVenue(req.user.id, id, patchVenueSchema.parse(req.body)));
+}
+
 export async function createCourt(req, res) {
   res.status(201).json(await service.createCourt(req.user.id, createCourtSchema.parse(req.body)));
 }
@@ -28,14 +34,14 @@ export async function updateCourt(req, res) {
 }
 
 export async function listSlots(req, res) {
-  res.json({ items: (await service.listSlots(req.user.id, slotsQuerySchema.parse(req.query))).map(slotDto) });
+  res.json({ items: (await service.listSlots(req.user.id, slotsQuerySchema.parse(req.query))).map(venueSlotDto) });
 }
 
 export async function createSlot(req, res) {
-  res.status(201).json(slotDto(await service.createSlot(req.user.id, createSlotSchema.parse(req.body))));
+  res.status(201).json(venueSlotDto(await service.createSlot(req.user.id, createSlotSchema.parse(req.body))));
 }
 
 export async function updateSlot(req, res) {
   const { id } = idSchema.parse(req.params);
-  res.json(slotDto(await service.updateSlot(req.user.id, id, patchSlotSchema.parse(req.body))));
+  res.json(venueSlotDto(await service.updateSlot(req.user.id, id, patchSlotSchema.parse(req.body))));
 }

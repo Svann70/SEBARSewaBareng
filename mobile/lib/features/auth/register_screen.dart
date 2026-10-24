@@ -102,7 +102,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Akun ${_name.text.trim()} siap dipakai.')),
     );
-    context.go(role.home);
+    // Akun venue baru langsung ke form tambah lapangan (diisi sekali di awal).
+    context.go(role == AccountRole.venue ? '/venue/court/new' : role.home);
   }
 
   @override
@@ -121,12 +122,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               style: T.body,
             ),
             const SizedBox(height: 24),
-            const Align(alignment: Alignment.centerLeft, child: Text('Daftar sebagai', style: T.small)),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Daftar sebagai', style: T.small),
+            ),
             const SizedBox(height: 8),
             Segmented<AccountRole>(
               options: AccountRole.values,
               value: _role,
-              labelOf: (role) => role == AccountRole.player ? 'Pemain' : 'Mitra venue',
+              labelOf: (role) =>
+                  role == AccountRole.player ? 'Pemain' : 'Mitra venue',
               onChanged: (role) => setState(() => _role = role),
             ),
             const SizedBox(height: 6),

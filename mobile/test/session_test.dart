@@ -56,8 +56,8 @@ void main() {
     test('tiap peran hanya di areanya', () {
       expect(authRedirect(AccountRole.player, '/home'), isNull);
       expect(authRedirect(AccountRole.player, '/venue'), '/home');
-      expect(authRedirect(AccountRole.player, '/venue/analytics'), '/home');
-      expect(authRedirect(AccountRole.venue, '/venue/analytics'), isNull);
+      expect(authRedirect(AccountRole.player, '/venue/court/new'), '/home');
+      expect(authRedirect(AccountRole.venue, '/venue/court/new'), isNull);
       expect(authRedirect(AccountRole.venue, '/home'), '/venue');
       expect(authRedirect(AccountRole.venue, '/create'), '/venue');
     });
