@@ -22,7 +22,9 @@ class ApiException implements Exception {
 /// tahan restart, simpan refresh token di secure storage lalu panggil
 /// [restore] sebelum layar pertama.
 class ApiClient {
-  ApiClient({String? baseUrl}) : baseUrl = baseUrl ?? _defaultBase;
+  ApiClient({String? baseUrl, http.Client? client})
+    : baseUrl = baseUrl ?? _defaultBase,
+      _client = client ?? http.Client();
 
   static const _timeout = Duration(seconds: 15);
   static const _envUrl = String.fromEnvironment('SEBAR_API_URL');
@@ -37,13 +39,27 @@ class ApiClient {
   }
 
   final String baseUrl;
-  final http.Client _client = http.Client();
+  final http.Client _client;
 
   String? _accessToken;
   String? _refreshToken;
   String? userId;
   Map<String, dynamic>? user;
   Future<void>? _refreshing;
+
+  /// Naik setiap sesi diganti/dihapus. Hasil refresh yang selesai setelah
+  /// sesinya berganti (logout, akun lain) dibuang.
+  int _generation = 0;
+  int _refreshingGeneration = -1;
+
+  static const _badResponse = ApiException(
+    'NETWORK',
+    'Respons server tidak valid. Cek koneksi lalu coba lagi.',
+  );
+
+  /// Dipanggil saat server menolak refresh token (sesi dicabut/kedaluwarsa).
+  /// Gangguan jaringan tidak memicu ini.
+  void Function()? onSessionExpired;
 
   bool get hasSession => _refreshToken != null;
 
@@ -106,17 +122,26 @@ class ApiClient {
     } on ApiException {
       // Sesi lokal tetap dibersihkan walau server tidak bisa dihubungi.
     } finally {
-      _accessToken = null;
-      _refreshToken = null;
-      userId = null;
-      user = null;
+      _clearSession();
     }
+  }
+
+  void _clearSession() {
+    _generation++;
+    _accessToken = null;
+    _refreshToken = null;
+    userId = null;
+    user = null;
   }
 
   // ── Profil ──────────────────────────────────────────────────────────────
 
   /// PATCH /me: field yang tidak dikirim tidak berubah; [clearPhone] menghapus nomor.
-  Future<Map<String, dynamic>> updateMe({String? fullName, String? phone, bool clearPhone = false}) async {
+  Future<Map<String, dynamic>> updateMe({
+    String? fullName,
+    String? phone,
+    bool clearPhone = false,
+  }) async {
     final body = <String, dynamic>{
       'fullName': ?fullName,
       if (clearPhone) 'phone': null,
@@ -129,8 +154,14 @@ class ApiClient {
 
   /// POST /me/password: sukses memicu 204, lalu seluruh sesi dicabut server —
   /// pemanggil wajib signOut dan kembali ke layar masuk.
-  Future<void> changePassword({required String current, required String next}) =>
-      _send('POST', '/me/password', body: {'currentPassword': current, 'newPassword': next});
+  Future<void> changePassword({
+    required String current,
+    required String next,
+  }) => _send(
+    'POST',
+    '/me/password',
+    body: {'currentPassword': current, 'newPassword': next},
+  );
 
   void _applyUser(Map<String, dynamic> data) {
     user = data;
@@ -138,8 +169,16 @@ class ApiClient {
   }
 
   void _applySession(Map<String, dynamic> data) {
-    _accessToken = data['accessToken'] as String?;
-    _refreshToken = data['refreshToken'] as String?;
+    final access = data['accessToken'], refresh = data['refreshToken'];
+    if (access is! String ||
+        access.isEmpty ||
+        refresh is! String ||
+        refresh.isEmpty) {
+      throw _badResponse;
+    }
+    _generation++;
+    _accessToken = access;
+    _refreshToken = refresh;
     final u = data['user'];
     if (u is Map) {
       user = _asMap(u);
@@ -149,33 +188,66 @@ class ApiClient {
 
   Future<void> _refreshTokens() {
     final pending = _refreshing;
-    if (pending != null) return pending;
+    // Refresh milik sesi lama (sebelum logout/ganti akun) tidak dipakai ulang.
+    if (pending != null && _refreshingGeneration == _generation) return pending;
     final future = _doRefresh();
     _refreshing = future;
-    return future.whenComplete(() => _refreshing = null);
+    _refreshingGeneration = _generation;
+    return future.whenComplete(() {
+      if (identical(_refreshing, future)) _refreshing = null;
+    });
   }
 
   Future<void> _doRefresh() async {
     final token = _refreshToken;
+    final generation = _generation;
     if (token == null) {
-      throw const ApiException('UNAUTHORIZED', 'Sesi sudah berakhir.');
-    }
-    try {
-      final data = _asMap(
-        await _send(
-          'POST',
-          '/auth/refresh',
-          body: {'refreshToken': token},
-          auth: false,
-        ),
+      throw const ApiException(
+        'UNAUTHORIZED',
+        'Sesi sudah berakhir.',
+        status: 401,
       );
-      _accessToken = data['accessToken'] as String?;
-      _refreshToken = data['refreshToken'] as String?;
-    } on ApiException {
-      _accessToken = null;
-      _refreshToken = null;
+    }
+    const stale = ApiException(
+      'UNAUTHORIZED',
+      'Sesi sudah berganti.',
+      status: 401,
+    );
+    dynamic payload;
+    try {
+      payload = await _send(
+        'POST',
+        '/auth/refresh',
+        body: {'refreshToken': token},
+        auth: false,
+      );
+    } on ApiException catch (error) {
+      if (generation != _generation) throw stale;
+      // Hanya penolakan dari server yang mengakhiri sesi; timeout/offline
+      // membiarkan token agar request berikutnya bisa mencoba lagi.
+      if (error.status == 401 || error.status == 403) {
+        _clearSession();
+        onSessionExpired?.call();
+        throw const ApiException(
+          'SESSION_EXPIRED',
+          'Sesi berakhir. Silakan masuk lagi.',
+          status: 401,
+        );
+      }
       rethrow;
     }
+    if (generation != _generation) throw stale;
+    final data = _asMap(payload);
+    final access = data['accessToken'], refresh = data['refreshToken'];
+    // 200 tanpa token (mis. portal Wi-Fi) bukan penolakan: sesi dibiarkan.
+    if (access is! String ||
+        access.isEmpty ||
+        refresh is! String ||
+        refresh.isEmpty) {
+      throw _badResponse;
+    }
+    _accessToken = access;
+    _refreshToken = refresh;
   }
 
   // ── Endpoint publik ─────────────────────────────────────────────────────
