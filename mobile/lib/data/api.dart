@@ -50,6 +50,7 @@ class ApiClient {
   /// Naik setiap sesi diganti/dihapus. Hasil refresh yang selesai setelah
   /// sesinya berganti (logout, akun lain) dibuang.
   int _generation = 0;
+  int _refreshingGeneration = -1;
 
   static const _badResponse = ApiException(
     'NETWORK',
@@ -187,10 +188,14 @@ class ApiClient {
 
   Future<void> _refreshTokens() {
     final pending = _refreshing;
-    if (pending != null) return pending;
+    // Refresh milik sesi lama (sebelum logout/ganti akun) tidak dipakai ulang.
+    if (pending != null && _refreshingGeneration == _generation) return pending;
     final future = _doRefresh();
     _refreshing = future;
-    return future.whenComplete(() => _refreshing = null);
+    _refreshingGeneration = _generation;
+    return future.whenComplete(() {
+      if (identical(_refreshing, future)) _refreshing = null;
+    });
   }
 
   Future<void> _doRefresh() async {
