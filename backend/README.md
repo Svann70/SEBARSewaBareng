@@ -118,6 +118,7 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | DELETE | `/lobbies/:id/members/me` | semua | - | 200 `{released}` | 409 sudah confirm / host, 410 |
 | DELETE | `/lobbies/:id` | host | - | 200 `{refundedMembers}` | 403, 409, 410 lewat deadline |
 | GET | `/venue/venues` | VENUE_ADMIN | - | 200 venue + courts milik sendiri | 403 |
+| POST | `/venue/venues` | VENUE_ADMIN | name (3–120), address (5–300), city (2–60), description? | 201 venue (untuk akun yang belum punya venue) | 403, 422 |
 | POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sport (`BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`), pricePerHour, capacity (2–30) | 201 court | 404 venue bukan milik |
 | PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, pricePerHour?, capacity?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik |
 | GET | `/venue/slots` | VENUE_ADMIN | date, venueId? | 200 `{items}` | 403 |
