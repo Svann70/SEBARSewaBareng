@@ -19,6 +19,8 @@ before(async () => {
   process.env.LOGIN_RATE_LIMIT = '100000';
   const { createApp } = await import('../src/app.js');
   ({ pool: db, tx } = await import('../src/db/pool.js'));
+  // Schema = fixture dump + drizzle/ migrations, exactly as on Supabase.
+  await (await import('../db/migrate.js')).runMigrations(db);
   ({ expireStaleLobbies } = await import('../src/modules/lobbies/membership.service.js'));
   server = createApp().listen(0);
   base = `http://127.0.0.1:${server.address().port}`;

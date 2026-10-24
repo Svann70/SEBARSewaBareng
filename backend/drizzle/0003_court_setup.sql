@@ -1,5 +1,4 @@
--- 003_court_setup.sql — setup lapangan sekali di awal (jalankan sekali di Supabase SQL Editor,
--- setelah 002_court_price_weekend.sql).
+-- 0003_court_setup — setup lapangan sekali di awal. Dijalankan oleh `npm run db:migrate`.
 -- Pemilik mengisi jam buka–tutup dan olahraga + kapasitas per lapangan (harga weekend = 002);
 -- jam di dalam jam buka otomatis bisa disewa (slot dibuat saat pemain membuat room).
 -- Aditif dan aman diulang: tidak ada kolom/data yang dihapus.

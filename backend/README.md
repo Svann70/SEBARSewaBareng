@@ -20,12 +20,15 @@ Error `RAISE EXCEPTION 'SEBAR::<KODE>'` dari DB dipetakan ke HTTP di `src/middle
 
 ## Setup
 
-Skema database **tidak** dikelola repo ini: tabel sudah ada di Supabase. Tidak ada migrasi.
+Skema dasar (tabel, trigger, function di `db/*.sql`) sudah ada di Supabase. Perubahan sesudahnya
+adalah migrasi Drizzle di `drizzle/`, dijalankan dengan `npm run db:migrate` (tercatat di
+`drizzle.__drizzle_migrations`, yang sudah jalan dilewati). Skema untuk query: `db/schema.js`.
 
 ```bash
 cd backend
 npm install
 cp .env.example .env      # isi DATABASE_URL, DATABASE_SSL_CA, JWT_SECRET
+npm run db:migrate        # terapkan migrasi drizzle/ yang belum jalan
 npm run dev               # http://localhost:3000/healthz
 ```
 
@@ -35,12 +38,17 @@ Supabase:
    Tanpa CA, server menolak start bila host DB bukan localhost.
 3. Pastikan RLS aktif di semua tabel (Data API/anon key tidak boleh akses langsung); backend memakai koneksi owner.
 
-Sekali saja, berurutan, di Supabase SQL Editor:
-1. `db/supabase/001_refresh_tokens.sql` (tabel `refresh_tokens`). Tanpa ini, register/login gagal.
-2. `db/supabase/002_court_price_weekend.sql` (kolom `courts.price_weekend`, harga Sabtu–Minggu).
-3. `db/supabase/003_court_setup.sql` (jam buka–tutup, lapangan serbaguna `court_sports`, olahraga
-   Basket/Tenis/Padel, kolom `court_slots.released`). Tanpa 002 + 003, katalog venue, buat room,
-   dan `npm run seed` gagal.
+Migrasi (`npm run db:migrate`, aman diulang; file yang dulu dijalankan manual di SQL Editor
+juga aman karena semuanya idempoten):
+- `0001_refresh_tokens` (tabel `refresh_tokens`). Tanpa ini, register/login gagal.
+- `0002_court_price_weekend` (kolom `courts.price_weekend`, harga Sabtu–Minggu).
+- `0003_court_setup` (jam buka–tutup, lapangan serbaguna `court_sports`, olahraga Basket/Tenis/Padel,
+  kolom `court_slots.released`). Tanpa 0002 + 0003, katalog venue, buat room, dan seed gagal.
+
+Mengubah skema: ubah `db/schema.js`, lalu `npm run db:generate` (SQL baru di `drizzle/`), periksa
+SQL-nya, lalu `npm run db:migrate`. Trigger/function/constraint khusus: `npx drizzle-kit generate
+--custom --name=<nama>` lalu tulis SQL-nya. **Jangan pakai `drizzle-kit push`**: Drizzle tidak
+mengenal trigger, function, `EXCLUDE` anti tumpang tindih, dan kebijakan RLS di database ini.
 
 Setup lapangan sekali di awal: semua jam di dalam jam buka bisa disewa tanpa pemilik membuka slot.
 Room selalu memakai tarif lapangan (weekday/weekend × durasi). Slot `OPEN` tanpa room aktif hanya
@@ -81,7 +89,8 @@ Tiap modul: `*.routes.js` (path → handler), `*.controller.js` (validasi input,
 ## Tes
 
 Tes integrasi butuh Postgres sekali pakai, **bukan** Supabase. `test/fixtures/schema.sql` = hasil
-`pg_dump --schema-only` dari Supabase (tabel, trigger, function); ambil ulang bila skema Supabase berubah.
+`pg_dump --schema-only` skema dasar Supabase (tabel, trigger, function); tes menjalankan migrasi
+`drizzle/` sendiri sebelum mulai.
 
 ```bash
 docker run -d --name sebar-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=sebar_test -p 127.0.0.1:55432:5432 postgres:17-alpine

@@ -1,20 +1,9 @@
-import fs from 'node:fs';
 import pg from 'pg';
 import { config } from '../config/env.js';
+import { connectionOptions } from './connection.js';
 
 // NUMERIC money columns arrive as strings; rupiah values fit safely in a JS number.
 pg.types.setTypeParser(pg.types.builtins.NUMERIC, Number);
-
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
-
-// TLS is built here, never from the URL: pg lets ?sslmode= override the ssl option and silently drop the CA.
-function connectionOptions(databaseUrl, caPath) {
-  const url = new URL(databaseUrl);
-  for (const key of [...url.searchParams.keys()]) if (key.startsWith('ssl')) url.searchParams.delete(key);
-  if (caPath) return { connectionString: url.toString(), ssl: { ca: fs.readFileSync(caPath, 'utf8') } };
-  if (!LOCAL_HOSTS.has(url.hostname)) throw new Error('DATABASE_SSL_CA is required for a non-local database');
-  return { connectionString: url.toString() };
-}
 
 export const pool = new pg.Pool({ ...connectionOptions(config.databaseUrl, config.databaseCa), max: 10 });
 

@@ -9,7 +9,7 @@ const EXPIRE_EVERY_MS = 60_000;
 // Fail fast when the manual Supabase SQL (README) has not been applied: every login would 500.
 const { rows } = await query(`SELECT to_regclass('public.refresh_tokens') AS t`);
 if (!rows[0].t) {
-  console.error('Table public.refresh_tokens is missing. Run backend/db/supabase/001_refresh_tokens.sql in Supabase first.');
+  console.error('Table public.refresh_tokens is missing. Run `npm run db:migrate` first.');
   process.exit(1);
 }
 

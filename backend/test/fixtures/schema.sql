@@ -1825,6 +1825,4 @@ ALTER TABLE public.wallets ENABLE ROW LEVEL SECURITY;
 \unrestrict aampWs302EydbzBwdMb3F8wYjXVzbArSIIWxR6ZmYvh3rvOmiekhk91AnDZZ6G0
 
 
--- Manual Supabase SQL from db/supabase/ (not part of the pg_dump above); included, not copied.
-\ir ../../db/supabase/001_refresh_tokens.sql
-\ir ../../db/supabase/003_court_setup.sql
+-- Migrations in drizzle/ are not part of this dump; the tests apply them (db/migrate.js).
