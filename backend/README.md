@@ -46,10 +46,36 @@ juga aman karena semuanya idempoten):
 - `0003_court_setup` (jam buka–tutup, lapangan serbaguna `court_sports`, olahraga Basket/Tenis/Padel,
   kolom `court_slots.released`). Tanpa 0002 + 0003, katalog venue, buat room, dan seed gagal.
 
-Mengubah skema: ubah `db/schema.js`, lalu `npm run db:generate` (SQL baru di `drizzle/`), periksa
-SQL-nya, lalu `npm run db:migrate`. Trigger/function/constraint khusus: `npx drizzle-kit generate
---custom --name=<nama>` lalu tulis SQL-nya. **Jangan pakai `drizzle-kit push`**: Drizzle tidak
-mengenal trigger, function, `EXCLUDE` anti tumpang tindih, dan kebijakan RLS di database ini.
+### Menambah / mengubah tabel (Drizzle)
+
+`db/schema.js` panjang (±420 baris) karena berisi **semua** 16 tabel lengkap dengan index, check, dan
+foreign key, hasil `drizzle-kit pull`. Isinya harus sama persis dengan database: Drizzle membuat SQL
+dari selisih `schema.js` vs `drizzle/meta`, jadi kalau ada yang dihapus dari `schema.js`, migrasi
+berikutnya akan ikut menghapusnya dari database. Untuk tabel baru cukup tulis beberapa baris:
+
+1. Tambah tabel di akhir `db/schema.js` (contoh: foto lapangan):
+   ```js
+   export const courtPhotos = pgTable("court_photos", {
+   	id: uuid().defaultRandom().primaryKey(),
+   	courtId: uuid("court_id").notNull().references(() => courts.id, { onDelete: "cascade" }),
+   	url: text().notNull(),
+   	sort: smallint().default(0).notNull(),
+   	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+   }).enableRLS();
+   ```
+   Selalu `.enableRLS()`: Data API/anon key Supabase tidak boleh membaca tabel langsung.
+2. `npm run db:generate -- --name=court_photos` → file baru `drizzle/0004_court_photos.sql` + `drizzle/meta/`.
+3. **Baca SQL-nya.** Harus hanya berisi perubahan yang dimaksud (di contoh: `CREATE TABLE`, `ENABLE ROW
+   LEVEL SECURITY`, foreign key). Ada `DROP` yang tidak diminta? Berhenti, cek `schema.js`.
+4. `npm run db:migrate` ke database lokal, lalu `npm test` (tes juga menjalankan migrasi).
+5. Commit `db/schema.js` + `drizzle/0004_*.sql` + `drizzle/meta/` dalam satu PR.
+6. Setelah PR masuk `main`: `npm run db:migrate` dengan `.env` Supabase.
+
+Mengubah kolom sama caranya: ubah definisinya di `schema.js`, lalu langkah 2–6. Trigger, function, atau
+constraint khusus (mis. `EXCLUDE`) tidak bisa ditulis di `schema.js`: `npx drizzle-kit generate --custom
+--name=<nama>` lalu tulis SQL-nya sendiri di file yang dibuat (buat idempoten: `IF NOT EXISTS`,
+`OR REPLACE`). **Jangan pakai `drizzle-kit push`**: Drizzle tidak mengenal trigger, function, `EXCLUDE`
+anti tumpang tindih, dan RLS di database ini, jadi `push` bisa menghapusnya.
 
 Setup lapangan sekali di awal: semua jam di dalam jam buka bisa disewa tanpa pemilik membuka slot.
 Room selalu memakai tarif lapangan (weekday/weekend × durasi). Slot `OPEN` tanpa room aktif hanya
