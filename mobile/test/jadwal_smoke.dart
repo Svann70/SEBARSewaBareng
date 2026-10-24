@@ -46,5 +46,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+    // Tanpa server, refresh otomatis gagal: banner "belum dimuat" + tombol
+    // Muat ulang tampil, dan jadwal kosong (tanpa slot seed palsu).
+    expect(find.text('Data venue belum dimuat dari server.'), findsOneWidget);
+    expect(find.text('Muat ulang'), findsOneWidget);
+    expect(find.text('Belum ada slot'), findsOneWidget);
   });
 }

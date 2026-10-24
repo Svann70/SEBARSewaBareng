@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme.dart';
 import 'core/widgets.dart';
+import 'data/state.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/booking/ticket_screen.dart';
@@ -11,6 +13,7 @@ import 'features/community/community_screen.dart';
 import 'features/create/create_lobby_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/lobby/lobby_detail_screen.dart';
+import 'features/profile/edit_profile_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/rooms/rooms_screen.dart';
 import 'features/venue/venue_courts.dart';
@@ -18,51 +21,80 @@ import 'features/venue/venue_shell.dart';
 import 'features/venue/venue_tabs.dart';
 import 'features/wallet/wallet_screen.dart';
 
-final _router = GoRouter(
-  initialLocation: '/login',
-  routes: [
-    GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
-    GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
-    GoRoute(path: '/home', builder: (_, _) => const HomeShell()),
-    GoRoute(path: '/rooms', builder: (_, _) => const RoomsScreen()),
-    GoRoute(
-      path: '/lobby/:id',
-      builder: (_, s) => LobbyDetailScreen(id: s.pathParameters['id']!),
-    ),
-    GoRoute(path: '/create', builder: (_, _) => const CreateLobbyScreen()),
-    GoRoute(
-      path: '/tickets',
-      builder: (_, _) => const Scaffold(body: TicketsScreen()),
-    ),
-    GoRoute(
-      path: '/ticket/:id',
-      builder: (_, s) => TicketScreen(id: s.pathParameters['id']!),
-    ),
-    GoRoute(path: '/venue', builder: (_, _) => const VenueShell()),
-    GoRoute(
-      path: '/venue/analytics',
-      builder: (_, _) => const VenueAnalyticsScreen(),
-    ),
-    GoRoute(
-      path: '/venue/courts',
-      builder: (_, s) => VenueCourtsScreen(
-        initialCourt: s.extra is int ? s.extra! as int : 0,
-      ),
-    ),
-    GoRoute(path: '/community', builder: (_, _) => const CommunityScreen()),
-  ],
-);
+/// Rute yang boleh dibuka tanpa login.
+const _publicRoutes = {'/login', '/register'};
 
-class SebarApp extends StatelessWidget {
+/// Tujuan redirect untuk [location], atau null bila boleh dibuka.
+/// Tanpa sesi semua rute selain login/daftar ditolak; tiap peran hanya
+/// boleh di area miliknya (venue di /venue, pemain di luar /venue).
+String? authRedirect(AccountRole? role, String location) {
+  final isPublic = _publicRoutes.contains(location);
+  if (role == null) return isPublic ? null : '/login';
+  if (isPublic) return role.home;
+  final inVenueArea = location == '/venue' || location.startsWith('/venue/');
+  if ((role == AccountRole.venue) != inVenueArea) return role.home;
+  return null;
+}
+
+final routerProvider = Provider<GoRouter>((ref) {
+  final role = ValueNotifier<AccountRole?>(ref.read(authProvider));
+  ref.listen(authProvider, (_, next) => role.value = next);
+  final router = GoRouter(
+    initialLocation: '/login',
+    refreshListenable: role,
+    redirect: (_, state) => authRedirect(role.value, state.matchedLocation),
+    routes: _routes,
+  );
+  ref.onDispose(() {
+    router.dispose();
+    role.dispose();
+  });
+  return router;
+});
+
+final _routes = <RouteBase>[
+  GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+  GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+  GoRoute(path: '/home', builder: (_, _) => const HomeShell()),
+  GoRoute(path: '/rooms', builder: (_, _) => const RoomsScreen()),
+  GoRoute(path: '/profile/edit', builder: (_, _) => const EditProfileScreen()),
+  GoRoute(
+    path: '/lobby/:id',
+    builder: (_, s) => LobbyDetailScreen(id: s.pathParameters['id']!),
+  ),
+  GoRoute(path: '/create', builder: (_, _) => const CreateLobbyScreen()),
+  GoRoute(
+    path: '/tickets',
+    builder: (_, _) => const Scaffold(body: TicketsScreen()),
+  ),
+  GoRoute(
+    path: '/ticket/:id',
+    builder: (_, s) => TicketScreen(id: s.pathParameters['id']!),
+  ),
+  GoRoute(path: '/venue', builder: (_, _) => const VenueShell()),
+  GoRoute(
+    path: '/venue/analytics',
+    builder: (_, _) => const VenueAnalyticsScreen(),
+  ),
+  GoRoute(
+    path: '/venue/courts',
+    builder: (_, s) => VenueCourtsScreen(
+      initialCourt: s.extra is int ? s.extra! as int : 0,
+    ),
+  ),
+  GoRoute(path: '/community', builder: (_, _) => const CommunityScreen()),
+];
+
+class SebarApp extends ConsumerWidget {
   const SebarApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp.router(
       title: 'SEBAR',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
-      routerConfig: _router,
+      routerConfig: ref.watch(routerProvider),
     );
   }
 }
@@ -93,7 +125,10 @@ class _HomeShellState extends State<HomeShell> {
           // Struktur anak tetap (bug Flutter 3.41 semantics parentDataDirty
           // saat tukar tipe/jumlah child saat runtime); toggle via Offstage.
           for (var i = 0; i < _pages.length; i++)
-            Offstage(offstage: _index != i, child: RepaintBoundary(child: _pages[i])),
+            Offstage(
+              offstage: _index != i,
+              child: RepaintBoundary(child: _pages[i]),
+            ),
         ],
       ),
       bottomNavigationBar: DockNav(

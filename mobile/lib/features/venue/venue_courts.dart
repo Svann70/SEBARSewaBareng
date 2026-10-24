@@ -358,10 +358,8 @@ class _CourtRow extends ConsumerWidget {
     final photos = ref.watch(courtGalleriesProvider)[key];
     final url =
         ref.watch(courtPhotosProvider)[key] ??
-        (photos == null || photos.isEmpty ? null : photos.first) ??
-        CourtPhoto.defaultUrl(key);
-    final hasPhoto =
-        ref.watch(courtPhotosProvider)[key] != null || photos != null;
+        (photos == null || photos.isEmpty ? null : photos.first);
+    final hasPhoto = url != null;
 
     return Material(
       color: C.surface,
@@ -378,12 +376,14 @@ class _CourtRow extends ConsumerWidget {
                 height: 44,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    cacheWidth: 160,
-                    errorBuilder: (_, _, _) => const _RowThumbFallback(),
-                  ),
+                  child: url == null
+                      ? const _RowThumbFallback()
+                      : Image.network(
+                          url,
+                          fit: BoxFit.cover,
+                          cacheWidth: 160,
+                          errorBuilder: (_, _, _) => const _RowThumbFallback(),
+                        ),
                 ),
               ),
               const SizedBox(width: 12),

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show ProviderOrFamily;
 
 import '../core/money.dart';
 import '../core/theme.dart';
+import '../core/widgets.dart' show courtPhotosProvider;
 import 'api.dart';
 
 enum Sport { badminton, futsal, volley, minisoccer }
@@ -52,16 +54,6 @@ extension AccountRoleX on AccountRole {
   };
 }
 
-/// Satu form login untuk pemain dan venue: peran ditentukan dari akun.
-/// ponytail: selama belum ada API, domain email dijadikan penentu
-/// (`@venue.sebar.app` = akun mitra); ganti ke peran dari server saat ada.
-AccountRole roleForEmail(String email) {
-  final value = email.trim().toLowerCase();
-  return value.startsWith('admin') || value.endsWith('@venue.sebar.app')
-      ? AccountRole.venue
-      : AccountRole.player;
-}
-
 /// Profil pengguna yang sedang login (dari server).
 class SessionUser {
   const SessionUser({
@@ -69,12 +61,14 @@ class SessionUser {
     required this.email,
     required this.fullName,
     required this.role,
+    this.phone,
     this.reliability = 100,
   });
 
   final String id;
   final String email;
   final String fullName;
+  final String? phone;
   final AccountRole role;
   final int reliability;
 
@@ -82,6 +76,7 @@ class SessionUser {
     id: json['id'] as String? ?? '',
     email: json['email'] as String? ?? '',
     fullName: json['fullName'] as String? ?? '',
+    phone: (json['phone'] as String?)?.trim(),
     role: accountRoleFromApi(json['role'] as String?),
     reliability: _asInt(json['reliabilityScore'], 100),
   );
@@ -103,11 +98,25 @@ final sessionProvider = NotifierProvider<SessionNotifier, SessionUser?>(
 
 class AuthNotifier extends Notifier<AccountRole?> {
   @override
-  AccountRole? build() => null;
+  AccountRole? build() {
+    void onExpired() => _endSession();
+    api.onSessionExpired = onExpired;
+    ref.onDispose(() {
+      // Container lain (tes) bisa sudah memasang callback-nya sendiri.
+      if (api.onSessionExpired == onExpired) api.onSessionExpired = null;
+    });
+    return null;
+  }
 
-  /// Login lokal (dipakai tes/offline).
+  /// Pesan untuk layar masuk setelah sesi dicabut server; dibaca sekali.
+  String? _sessionNotice;
+
+  /// Login lokal tanpa token, hanya untuk tes. Jangan dipakai di lib/:
+  /// router guard hanya melihat [state].
+  @visibleForTesting
   void login(AccountRole role) => state = role;
 
+  @visibleForTesting
   void logout() => state = null;
 
   /// Login ke server. null = sukses, selain itu pesan error.
@@ -116,8 +125,13 @@ class AuthNotifier extends Notifier<AccountRole?> {
       await api.login(email.trim(), password);
       final user = SessionUser.fromJson(api.user ?? const {});
       ref.read(sessionProvider.notifier).set(user);
-      state = user.role;
       await _bootstrap(user.role);
+      // Router pindah ke beranda begitu state terisi; tunggu data awal dulu.
+      // Sesi bisa dicabut selama bootstrap: jangan masuk tanpa token.
+      if (!api.hasSession) {
+        return takeSessionNotice() ?? 'Sesi berakhir. Silakan masuk lagi.';
+      }
+      state = user.role;
       return null;
     } catch (error) {
       return apiMessage(error);
@@ -142,8 +156,13 @@ class AuthNotifier extends Notifier<AccountRole?> {
       );
       final user = SessionUser.fromJson(api.user ?? const {});
       ref.read(sessionProvider.notifier).set(user);
-      state = user.role;
       await _bootstrap(user.role);
+      // Router pindah ke beranda begitu state terisi; tunggu data awal dulu.
+      // Sesi bisa dicabut selama bootstrap: jangan masuk tanpa token.
+      if (!api.hasSession) {
+        return takeSessionNotice() ?? 'Sesi berakhir. Silakan masuk lagi.';
+      }
+      state = user.role;
       return null;
     } catch (error) {
       return apiMessage(error);
@@ -152,8 +171,67 @@ class AuthNotifier extends Notifier<AccountRole?> {
 
   Future<void> signOut() async {
     await api.logout();
+    _endSession(notice: null);
+    // Callback sesi berakhir bisa terpanggil selama logout menunggu server.
+    _sessionNotice = null;
+  }
+
+  /// Kosongkan sesi lalu buang data akun sebelumnya. Router mengarahkan ke
+  /// /login begitu [state] null.
+  void _endSession({String? notice = 'Sesi berakhir. Silakan masuk lagi.'}) {
+    if (state == null && ref.read(sessionProvider) == null) return;
+    _sessionNotice = notice;
     ref.read(sessionProvider.notifier).set(null);
     state = null;
+    // Ditunda: callback bisa terpanggil di tengah refresh provider lain.
+    venueProfile = _seedVenueProfile;
+    Future.microtask(() {
+      if (!ref.mounted) return;
+      for (final p in _accountData) {
+        ref.invalidate(p);
+      }
+    });
+  }
+
+  String? takeSessionNotice() {
+    final notice = _sessionNotice;
+    _sessionNotice = null;
+    return notice;
+  }
+
+  /// Simpan nama/telepon ke server lalu perbarui sesi lokal.
+  /// [clearPhone] true menghapus nomor telepon.
+  Future<String?> updateProfile({
+    String? fullName,
+    String? phone,
+    bool clearPhone = false,
+  }) async {
+    try {
+      await api.updateMe(
+        fullName: fullName,
+        phone: phone,
+        clearPhone: clearPhone,
+      );
+      ref
+          .read(sessionProvider.notifier)
+          .set(SessionUser.fromJson(api.user ?? const {}));
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  /// Ubah password. Sukses = semua sesi dicabut server, pemanggil wajib signOut.
+  Future<String?> changePassword({
+    required String current,
+    required String next,
+  }) async {
+    try {
+      await api.changePassword(current: current, next: next);
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
   }
 
   /// Muat data awal setelah login. Kegagalan satu bagian tidak membatalkan
@@ -176,6 +254,19 @@ class AuthNotifier extends Notifier<AccountRole?> {
 final authProvider = NotifierProvider<AuthNotifier, AccountRole?>(
   AuthNotifier.new,
 );
+
+/// Data milik akun yang dibuang saat keluar, supaya akun berikutnya di
+/// perangkat yang sama tidak melihatnya.
+final _accountData = <ProviderOrFamily>[
+  venuesProvider,
+  venueSlotsProvider,
+  lobbiesProvider,
+  walletProvider,
+  bookingsProvider,
+  filterProvider,
+  chatProvider,
+  courtPhotosProvider,
+];
 
 /// Pesan error yang aman ditampilkan ke pengguna.
 String apiMessage(Object error) =>
@@ -231,7 +322,7 @@ LobbyStatus _lobbyStatusFromApi(String? value) => switch (value) {
 
 /// Profil venue pemilik akun venue. Nilai awal = seed, diganti dari
 /// `/venue/venues` setelah login supaya nama dan jumlah lapangan sesuai akun.
-var venueProfile = (
+const _seedVenueProfile = (
   name: 'GOR C-Tra Arena',
   city: 'Bandung',
   courts: 2,
@@ -240,6 +331,7 @@ var venueProfile = (
   payout: 12750000,
   joinedAt: 'Mitra sejak Mar 2024',
 );
+var venueProfile = _seedVenueProfile;
 
 /// Venue + aturan harga sewa per jam. Harga akhir mengikuti hari:
 /// Senin–Jumat memakai tarif weekday, Sabtu–Minggu tarif weekend.
@@ -578,110 +670,11 @@ class VenueSlot {
       );
 }
 
-DateTime _day(int offset) {
-  final n = DateTime.now();
-  return DateTime(n.year, n.month, n.day + offset);
-}
-
-DateTime _slotAt(int dayOffset, int hour) => DateTime(
-  _day(dayOffset).year,
-  _day(dayOffset).month,
-  _day(dayOffset).day,
-  hour,
-);
-
 class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
+  /// Tanpa seed: slot venue selalu dari server, supaya jadwal tidak pernah
+  /// menampilkan data palsu yang menutupi kegagalan muat.
   @override
-  List<VenueSlot> build() => [
-    VenueSlot(
-      id: 's1',
-      court: 1,
-      start: _slotAt(0, 8),
-      end: _slotAt(0, 10),
-      price: 200000,
-      status: SlotStatus.booked,
-      guest: 'Raka · Badminton',
-    ),
-    VenueSlot(
-      id: 's2',
-      court: 1,
-      start: _slotAt(0, 10),
-      end: _slotAt(0, 12),
-      price: 200000,
-    ),
-    VenueSlot(
-      id: 's3',
-      court: 1,
-      start: _slotAt(0, 13),
-      end: _slotAt(0, 15),
-      price: 200000,
-      status: SlotStatus.lobby,
-      guest: 'Room butuh 2 orang',
-    ),
-    VenueSlot(
-      id: 's4',
-      court: 1,
-      start: _slotAt(0, 16),
-      end: _slotAt(0, 18),
-      price: 250000,
-    ),
-    VenueSlot(
-      id: 's5',
-      court: 1,
-      start: _slotAt(0, 19),
-      end: _slotAt(0, 21),
-      price: 300000,
-      status: SlotStatus.booked,
-      guest: 'Tim Dago · Futsal',
-    ),
-    VenueSlot(
-      id: 's6',
-      court: 2,
-      start: _slotAt(0, 16),
-      end: _slotAt(0, 18),
-      price: 220000,
-      status: SlotStatus.booked,
-      guest: 'Tim Sutos · Mini Soccer',
-    ),
-    VenueSlot(
-      id: 's7',
-      court: 2,
-      start: _slotAt(0, 18),
-      end: _slotAt(0, 20),
-      price: 220000,
-    ),
-    VenueSlot(
-      id: 's8',
-      court: 2,
-      start: _slotAt(0, 20),
-      end: _slotAt(0, 22),
-      price: 0,
-      status: SlotStatus.closed,
-    ),
-    VenueSlot(
-      id: 's9',
-      court: 1,
-      start: _slotAt(1, 8),
-      end: _slotAt(1, 10),
-      price: 200000,
-      status: SlotStatus.booked,
-      guest: 'Ayu · Badminton',
-    ),
-    VenueSlot(
-      id: 's10',
-      court: 1,
-      start: _slotAt(1, 10),
-      end: _slotAt(1, 12),
-      price: 200000,
-    ),
-    VenueSlot(
-      id: 's11',
-      court: 2,
-      start: _slotAt(1, 19),
-      end: _slotAt(1, 21),
-      price: 250000,
-    ),
-  ];
+  List<VenueSlot> build() => const [];
 
   bool _overlaps(int court, DateTime start, DateTime end) => state.any(
     (s) =>
@@ -728,8 +721,27 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
   List<ApiVenue> _venues = const [];
   String? _venueId;
   List<VenueSlot> _raw = const [];
+  bool _loading = false;
+  bool _loaded = false;
+  String? _lastError;
+  Future<String?>? _inFlight;
 
   List<ApiVenue> get venues => _venues;
+
+  /// Sedang memuat dari server — dipakai layar untuk spinner.
+  bool get isLoading => _loading;
+
+  /// Pesan kegagalan muat terakhir, null kalau tidak ada/terakhir sukses.
+  String? get lastError => _lastError;
+
+  /// True setelah /venue/venues sukses. False = belum bisa kelola lapangan
+  /// atau slot; tombol add di layar harus memicu refresh() dulu.
+  bool get hasVenue => _venueId != null;
+
+  /// Server sudah menjawab tapi akun ini tidak punya venue sama sekali
+  /// (mis. akun lama yang role-nya dinaikkan manual) — bukan kegagalan
+  /// muat; layar harus menawarkan membuat venue, bukan muat ulang.
+  bool get missingVenue => _loaded && _venues.isEmpty;
 
   ApiVenue? get venue {
     for (final v in _venues) {
@@ -799,7 +811,19 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     );
   }
 
-  Future<String?> refresh() async {
+  /// Muat ulang venue + slot 7 hari ke depan. Single-flight: panggilan saat
+  /// refresh berjalan berbagi future yang sama supaya tidak request dobel
+  /// (layar venue memuat semua tab sekaligus saat shell terbuka).
+  Future<String?> refresh() {
+    final pending = _inFlight;
+    if (pending != null) return pending;
+    final future = _doRefresh();
+    _inFlight = future;
+    return future.whenComplete(() => _inFlight = null);
+  }
+
+  Future<String?> _doRefresh() async {
+    _loading = true;
     try {
       final data = _asMap(await api.get('/venue/venues'));
       final mine = [
@@ -807,6 +831,7 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
           ApiVenue.fromJson(_asMap(item)),
       ];
       _venues = mine;
+      _loaded = true;
       final selected = _venueId;
       _venueId = mine.any((v) => v.id == selected)
           ? selected
@@ -816,19 +841,32 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
       final days = <DateTime>[
         for (var i = 0; i < 7; i++) DateTime.now().add(Duration(days: i)),
       ];
-      final pages = await Future.wait([
-        for (final day in days)
-          api.get('/venue/slots', query: {'date': _apiDate(day)}),
-      ]);
-      _raw = [
-        for (final page in pages)
-          for (final item in _asList(_asMap(page)['items']))
-            _fromApi(ApiSlot.fromJson(_asMap(item))),
-      ];
+      final pages = await Future.wait([for (final day in days) _slotsFor(day)]);
+      _raw = [for (final page in pages) ...page];
       _applySlots();
+      _lastError = null;
       return null;
     } catch (error) {
-      return apiMessage(error);
+      _lastError = apiMessage(error);
+      return _lastError;
+    } finally {
+      _loading = false;
+    }
+  }
+
+  /// Satu hari gagal tidak membatalkan refresh — layar tetap menampilkan
+  /// data hari lain dan bisa dicoba lagi lewat tarik-muat-ulang.
+  Future<List<VenueSlot>> _slotsFor(DateTime day) async {
+    try {
+      final page = _asMap(
+        await api.get('/venue/slots', query: {'date': _apiDate(day)}),
+      );
+      return [
+        for (final item in _asList(page['items']))
+          _fromApi(ApiSlot.fromJson(_asMap(item))),
+      ];
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -894,6 +932,25 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
           'priceWeekend': ?priceWeekend,
           'capacity': capacity,
         },
+      );
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  /// Buat venue pertama untuk akun venue yang belum punya venue
+  /// (mis. akun lama yang role-nya dinaikkan manual di database).
+  Future<String?> createVenueRemote({
+    required String name,
+    required String address,
+    required String city,
+  }) async {
+    try {
+      await api.post(
+        '/venue/venues',
+        body: {'name': name, 'address': address, 'city': city},
       );
       await refresh();
       return null;

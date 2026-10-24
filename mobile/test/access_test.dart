@@ -46,25 +46,46 @@ void main() {
     final day = DateTime.now();
     DateTime at(int h) => DateTime(day.year, day.month, day.day, h);
 
-    // s1 = Lapangan 1, 08:00-10:00 hari ini.
+    // Tanpa seed: isi state lewat add() dengan slot Lapangan 1, 08:00-10:00.
+    expect(
+      slots.add(court: 1, start: at(8), end: at(10), price: 200000),
+      isNull,
+    );
     expect(
       slots.add(court: 1, start: at(9), end: at(11), price: 200000),
       'Slot bentrok dengan jadwal lain.',
     );
+    // Bersebelahan (06:00-08:00) tidak dianggap bentrok.
     expect(
       slots.add(court: 1, start: at(6), end: at(8), price: 200000),
       isNull,
     );
     expect(
       container.read(venueSlotsProvider).where((s) => s.court == 1).length,
-      greaterThan(5),
+      2,
     );
   });
 
   test('slot hari lain disaring per tanggal', () {
-    final all = ProviderContainer().read(venueSlotsProvider);
-    final today = slotsOn(all, DateTime.now());
-    expect(today.any((s) => s.start.day == DateTime.now().day), isTrue);
-    expect(today.every((s) => s.start.day == DateTime.now().day), isTrue);
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final slots = container.read(venueSlotsProvider.notifier);
+    final today = DateTime.now();
+    final tomorrow = today.add(const Duration(days: 1));
+    DateTime at(DateTime d, int h) => DateTime(d.year, d.month, d.day, h);
+
+    slots.add(court: 1, start: at(today, 9), end: at(today, 10), price: 100000);
+    slots.add(
+      court: 2,
+      start: at(tomorrow, 19),
+      end: at(tomorrow, 21),
+      price: 250000,
+    );
+
+    final all = container.read(venueSlotsProvider);
+    final todayList = slotsOn(all, today);
+    expect(todayList.length, 1);
+    expect(todayList.every((s) => s.start.day == today.day), isTrue);
+    expect(slotsOn(all, tomorrow).length, 1);
   });
 }

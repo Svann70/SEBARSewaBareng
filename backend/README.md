@@ -103,6 +103,8 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | POST | `/auth/refresh` | - | refreshToken | 200 token baru (refresh token lama tidak berlaku lagi) | 401 |
 | POST | `/auth/logout` | - | refreshToken | 204 | |
 | GET | `/me` | semua | - | 200 profil + skor | 401 |
+| PATCH | `/me` | semua | fullName?, phone? (null = hapus; minimal satu field) | 200 profil baru | 401, 409 nomor telepon dipakai, 422 |
+| POST | `/me/password` | semua | currentPassword, newPassword (≥8, ≠ lama) | 204 (semua refresh token dicabut, semua perangkat wajib login ulang) | 401 password saat ini salah, 422 |
 | GET | `/me/wallet` | semua | - | 200 `{balance, held, available}` | |
 | POST | `/me/wallet/topup` | semua | amount (10.000–10.000.000), header `Idempotency-Key` | 201 entri ledger (200 bila key diulang) | 422, 422 `IDEMPOTENCY_KEY_REUSED`, 403 bila sandbox mati |
 | GET | `/me/wallet/ledger` | semua | page | 200 `{items, page}` | |
@@ -116,6 +118,7 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | DELETE | `/lobbies/:id/members/me` | semua | - | 200 `{released}` | 409 sudah confirm / host, 410 |
 | DELETE | `/lobbies/:id` | host | - | 200 `{refundedMembers}` | 403, 409, 410 lewat deadline |
 | GET | `/venue/venues` | VENUE_ADMIN | - | 200 venue + courts milik sendiri | 403 |
+| POST | `/venue/venues` | VENUE_ADMIN | name (3–120), address (5–300), city (2–60), description? | 201 venue (untuk akun yang belum punya venue) | 403, 422 |
 | POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sport (`BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`), pricePerHour, priceWeekend? (Sabtu–Minggu; null = sama weekday), capacity (2–30) | 201 court | 404 venue bukan milik |
 | PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, pricePerHour?, priceWeekend?, capacity?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik |
 | GET | `/venue/slots` | VENUE_ADMIN | date, venueId? | 200 `{items}` | 403 |

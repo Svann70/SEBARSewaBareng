@@ -24,8 +24,14 @@ web/desktop (lihat `lib/data/api.dart`).
 
 ```bash
 cd ../backend && npm run dev      # server di :3000
-cd ../mobile && flutter run --dart-define=SEBAR_API_URL=http://192.168.1.10:3000
+cd ../mobile && flutter run --dart-define-from-file=env.json
 ```
+
+`env.json` menyimpan `SEBAR_API_URL` (contoh: `http://192.168.1.10:3000`;
+lihat `env.json.example`). Untuk perangkat fisik: PC dan HP harus satu
+Wi-Fi, `usesCleartextTraffic` sudah diaktifkan di debug manifest, dan
+firewall Windows harus mengizinkan port 3000. Perubahan env perlu
+rebuild penuh (hot reload tidak memproses dart-define).
 
 - Token disimpan di memori `ApiClient`; 401 memicu satu kali refresh otomatis.
   Sesi hilang saat app ditutup (belum ada secure storage).

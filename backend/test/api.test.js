@@ -188,6 +188,58 @@ describe('auth', { skip }, () => {
     const p = await player();
     assert.equal((await api('GET', '/venue/slots?date=2026-01-01', { token: p.token })).status, 403);
   });
+
+  test('profile updates name and phone; phone is validated and unique', async () => {
+    const p = await player();
+    const r = await api('PATCH', '/me', { token: p.token, body: { fullName: 'Nama Baru', phone: '+62812345678' } });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.fullName, 'Nama Baru');
+    assert.equal(r.body.phone, '+62812345678');
+
+    assert.equal((await api('PATCH', '/me', { token: p.token, body: { phone: '08x' } })).status, 422);
+    assert.equal((await api('PATCH', '/me', { token: p.token, body: {} })).status, 422, 'no-op patch rejected');
+
+    const other = await player();
+    assert.equal(
+      (await api('PATCH', '/me', { token: other.token, body: { phone: '+62812345678' } })).status,
+      409,
+      'phone already registered',
+    );
+
+    // Omitted fields survive; null clears the phone.
+    const kept = await api('PATCH', '/me', { token: p.token, body: { fullName: 'Nama Kedua' } });
+    assert.equal(kept.body.phone, '+62812345678');
+    const cleared = await api('PATCH', '/me', { token: p.token, body: { phone: null } });
+    assert.equal(cleared.body.phone, null);
+    assert.equal((await api('PATCH', '/me', { body: { fullName: 'X' } })).status, 401);
+  });
+
+  test('password change verifies the current one, then revokes every session', async () => {
+    const u = await register();
+    const email = `pw${run}-${u.id.slice(0, 8)}@test.local`;
+    await db.query('UPDATE users SET email = $2 WHERE id = $1', [u.id, email]);
+
+    assert.equal(
+      (await api('POST', '/me/password', { token: u.token, body: { currentPassword: 'nope-wrong', newPassword: 'password456' } })).status,
+      401,
+    );
+    assert.equal(
+      (await api('POST', '/me/password', { token: u.token, body: { currentPassword: 'password123', newPassword: 'password123', } })).status,
+      422,
+      'same password refused',
+    );
+    assert.equal(
+      (await api('POST', '/me/password', { token: u.token, body: { currentPassword: 'password123', newPassword: 'short' } })).status,
+      422,
+    );
+
+    const ok = await api('POST', '/me/password', { token: u.token, body: { currentPassword: 'password123', newPassword: 'password456' } });
+    assert.equal(ok.status, 204);
+
+    assert.equal((await api('POST', '/auth/login', { body: { email, password: 'password123' } })).status, 401, 'old password dead');
+    assert.equal((await api('POST', '/auth/login', { body: { email, password: 'password456' } })).status, 200);
+    assert.equal((await api('POST', '/auth/refresh', { body: { refreshToken: u.refreshToken } })).status, 401, 'sessions revoked');
+  });
 });
 
 describe('wallet', { skip }, () => {
@@ -212,6 +264,39 @@ describe('wallet', { skip }, () => {
     assert.deepEqual(results.map((r) => r.status).sort(), [200, 200, 200, 200, 200, 201]);
     assert.equal((await wallet(p)).balance, 20_000);
     assert.equal((await api('POST', '/me/wallet/topup', { token: q.token, body: { amount: 20_000 }, headers })).status, 201);
+  });
+});
+
+describe('venue admin', { skip }, () => {
+  test('an admin without a venue can create one via POST /venue/venues', async () => {
+    // Simulate an account whose role was promoted by hand: venue row removed.
+    const admin = await register('VENUE_ADMIN');
+    await db.query('DELETE FROM venues WHERE owner_id = $1', [admin.id]);
+    const empty = await api('GET', '/venue/venues', { token: admin.token });
+    assert.equal(empty.status, 200);
+    assert.equal(empty.body.items.length, 0);
+
+    assert.equal(
+      (await api('POST', '/venue/venues', { token: admin.token, body: { name: 'X', address: 'Jl. 1', city: 'B' } })).status,
+      422,
+      'validation',
+    );
+    assert.equal(
+      (await api('POST', '/venue/venues', { token: (await player()).token, body: { name: 'GOR Y', address: 'Jl. Y No. 1', city: 'Bandung' } })).status,
+      403,
+      'players rejected',
+    );
+
+    const r = await api('POST', '/venue/venues', {
+      token: admin.token,
+      body: { name: 'GOR Baru', address: 'Jl. Baru No. 9', city: 'Bandung', description: 'Cabang baru' },
+    });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.name, 'GOR Baru');
+    assert.deepEqual(r.body.courts, []);
+    const list = await api('GET', '/venue/venues', { token: admin.token });
+    assert.equal(list.body.items.length, 1);
+    assert.equal(list.body.items[0].id, r.body.id);
   });
 });
 

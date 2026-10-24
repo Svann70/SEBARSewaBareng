@@ -19,6 +19,17 @@ export async function listVenues(ownerId) {
   return rows;
 }
 
+// Admin with no venue (e.g. a promoted PLAYER account) creates their first one here;
+// the register endpoint is the other place venues are born.
+export async function createVenue(ownerId, { name, address, city, description }) {
+  const { rows } = await query(
+    `INSERT INTO venues (owner_id, name, address, city, description)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id, name, city, status`,
+    [ownerId, name, address, city, description ?? null],
+  );
+  return { ...rows[0], courts: [] };
+}
+
 export async function listSlots(ownerId, { date, venueId }) {
   const { rows } = await query(
     `${SLOT_SELECT} WHERE v.owner_id = $1 AND ${onDateWib('s.start_at', '$2')}

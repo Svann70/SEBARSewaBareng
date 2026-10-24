@@ -7,7 +7,7 @@ import '../../core/widgets.dart';
 import '../../data/state.dart';
 
 /// Satu pintu masuk untuk pemain dan mitra venue — tidak ada pemilih peran,
-/// peran dibaca dari akun ([roleForEmail]) supaya tidak membingungkan.
+/// peran dibaca dari akun yang dipilih saat mendaftar supaya tidak membingungkan.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -16,9 +16,22 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _email = TextEditingController(text: 'raka@sebar.app');
-  final _password = TextEditingController(text: 'password123');
+  final _email = TextEditingController();
+  final _password = TextEditingController();
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final notice = ref.read(authProvider.notifier).takeSessionNotice();
+      if (notice != null && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(notice)));
+      }
+    });
+  }
 
   @override
   void dispose() {

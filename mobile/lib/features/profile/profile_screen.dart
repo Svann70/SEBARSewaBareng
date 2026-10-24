@@ -6,6 +6,10 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../data/state.dart';
 
+/// Riwayat yang tampil sebelum diringkas; sisanya lewat tombol "Lihat semua"
+/// supaya menu tetap dekat atas dan halaman pendek tidak perlu di-scroll.
+const _historyPreview = 5;
+
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
@@ -15,6 +19,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _busy = false;
+  bool _showAll = false;
 
   Future<void> _logout() async {
     setState(() => _busy = true);
@@ -33,87 +38,92 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final initial = (user?.fullName.trim().isEmpty ?? true)
         ? 'R'
         : user!.fullName.trim()[0].toUpperCase();
+    final hasMore = bookings.length > _historyPreview;
+    final visible = _showAll ? bookings : bookings.take(_historyPreview);
 
     return SafeArea(
       bottom: false,
-      child: ListView(
-        padding: kScreenPad,
-        children: [
-          const Text('Profil', style: T.h1),
-          const SizedBox(height: 2),
-          const Text('Rekam jejak main kamu.', style: T.small),
-          const SizedBox(height: 16),
-          _ProfileHero(
-            name: user?.fullName ?? 'Raka',
-            email: user?.email ?? 'raka@sebar.app',
-            initial: initial,
-            played: played,
-            checkIn: checkIn,
-          ),
-          const SizedBox(height: 22),
-          const SectionHeader('Riwayat main'),
-          const SizedBox(height: 10),
-          if (bookings.isEmpty)
-            const EmptyState(
-              icon: Icons.history,
-              title: 'Belum ada riwayat',
-              message: 'Main pertama kamu akan muncul di sini.',
-            )
-          else
-            for (final b in bookings)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _PlayRow(booking: b),
+      // Tinggi minimum mengikuti viewport: konten pendek tidak di-scroll, padahal
+      // ketika riwayat panjang tetap bisa menggulir seperti biasa.
+      child: LayoutBuilder(
+        builder: (context, viewport) => SingleChildScrollView(
+          child: ConstrainedBox(
+            // 36 = pad atas 12 (kScreenPadTop) + jarak ekor 24.
+            constraints: BoxConstraints(
+              minHeight: (viewport.maxHeight - 36).clamp(0.0, double.infinity),
+            ),
+            child: Padding(
+              padding: kScreenPadTop,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Profil', style: T.h1),
+                  const SizedBox(height: 2),
+                  const Text('Rekam jejak main kamu.', style: T.small),
+                  const SizedBox(height: 16),
+                  _ProfileHero(
+                    name: user?.fullName ?? 'Raka',
+                    email: user?.email ?? 'raka@sebar.app',
+                    phone: user?.phone,
+                    initial: initial,
+                    played: played,
+                    checkIn: checkIn,
+                    onEdit: () => context.push('/profile/edit'),
+                  ),
+                  const SizedBox(height: 12),
+                  SurfaceCard(
+                    radius: 24,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 2,
+                    ),
+                    child: Column(
+                      children: [
+                        const _MenuRow(
+                          icon: Icons.receipt_long_outlined,
+                          label: 'Riwayat pembayaran',
+                        ),
+                        const Divider(),
+                        const _MenuRow(
+                          icon: Icons.help_outline,
+                          label: 'Pusat bantuan',
+                        ),
+                        const Divider(),
+                        _MenuRow(
+                          icon: Icons.logout,
+                          label: 'Keluar',
+                          danger: true,
+                          onTap: _busy ? null : _logout,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  SectionHeader(
+                    'Riwayat main',
+                    action: hasMore ? (_showAll ? 'Tutup' : 'Lihat semua') : null,
+                    onTap: hasMore ? () => setState(() => _showAll = !_showAll) : null,
+                  ),
+                  const SizedBox(height: 10),
+                  if (bookings.isEmpty)
+                    // Lebar penuh supaya ikon dan teks EmptyState benar-benar di tengah.
+                    const SizedBox(width: double.infinity, child: EmptyState(
+                      icon: Icons.history,
+                      title: 'Belum ada riwayat',
+                      message: 'Main pertama kamu akan muncul di sini.',
+                    ))
+                  else
+                    for (final b in visible)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _PlayRow(booking: b),
+                      ),
+                  const SizedBox(height: 24),
+                ],
               ),
-          const SizedBox(height: 12),
-          SurfaceCard(
-            radius: 24,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Mode mitra', style: T.h3),
-                const SizedBox(height: 4),
-                const Text(
-                  'Kelola jadwal lapangan, scan tiket, dan pencairan lewat '
-                  'akun mitra venue.',
-                  style: T.small,
-                ),
-                const SizedBox(height: 12),
-                GhostButton(
-                  label: 'Masuk sebagai mitra',
-                  icon: Icons.storefront_outlined,
-                  height: 46,
-                  onPressed: () => context.go('/login'),
-                ),
-              ],
             ),
           ),
-          const SizedBox(height: 12),
-          SurfaceCard(
-            radius: 24,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-            child: Column(
-              children: [
-                const _MenuRow(
-                  icon: Icons.receipt_long_outlined,
-                  label: 'Riwayat pembayaran',
-                ),
-                const Divider(),
-                const _MenuRow(
-                  icon: Icons.help_outline,
-                  label: 'Pusat bantuan',
-                ),
-                const Divider(),
-                _MenuRow(
-                  icon: Icons.logout,
-                  label: 'Keluar',
-                  danger: true,
-                  onTap: _busy ? null : _logout,
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -126,13 +136,17 @@ class _ProfileHero extends StatelessWidget {
     required this.initial,
     required this.played,
     required this.checkIn,
+    this.phone,
+    this.onEdit,
   });
 
   final String name;
   final String email;
+  final String? phone;
   final String initial;
   final int played;
   final int checkIn;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -181,6 +195,15 @@ class _ProfileHero extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: T.small,
                     ),
+                    if (phone != null && phone!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        phone!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: T.small,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -189,6 +212,13 @@ class _ProfileHero extends StatelessWidget {
                 color: C.primaryDeep,
                 background: C.primarySoft,
                 icon: Icons.check_circle_outline,
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Edit profil',
+                icon: const Icon(Icons.edit_outlined, size: 20, color: C.ink),
+                onPressed: onEdit,
               ),
             ],
           ),

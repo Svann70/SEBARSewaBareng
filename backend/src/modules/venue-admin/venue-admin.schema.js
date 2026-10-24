@@ -8,6 +8,15 @@ const name = z.string().trim().min(2).max(60);
 export const idSchema = z.object({ id: z.uuid() });
 export const dateSchema = z.object({ date: z.iso.date() });
 
+// Venue pertama untuk akun VENUE_ADMIN yang belum punya venue (mis. akun
+// lama yang role-nya diubah manual). Batasan sama dengan venueSchema di auth.
+export const createVenueSchema = z.object({
+  name: z.string().trim().min(3).max(120),
+  address: z.string().trim().min(5).max(300),
+  city: z.string().trim().min(2).max(60),
+  description: z.string().trim().max(1000).optional(),
+});
+
 // venueId opsional: tanpa itu, slot semua venue milik akun ini dikembalikan.
 export const slotsQuerySchema = z.object({
   date: z.iso.date(),

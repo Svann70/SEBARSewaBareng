@@ -26,7 +26,7 @@ export function createApp() {
     next();
   });
 
-  app.get('/healthz', async (_req, res) => {
+  app.get('/health', async (_req, res) => {
     await query('SELECT 1');
     res.json({ ok: true });
   });
