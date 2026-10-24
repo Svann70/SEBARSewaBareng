@@ -9,7 +9,7 @@ import '../../data/state.dart';
 import 'venue_tabs.dart';
 
 /// Shell akun venue: akun terpisah dari pemain, dock sendiri.
-/// Pemilik mengisi "Atur venue" sekali; tab lain hanya untuk memantau.
+/// Pemilik menambah lapangan sekali; tab lain hanya untuk memantau.
 class VenueShell extends StatefulWidget {
   const VenueShell({super.key});
 
@@ -48,10 +48,10 @@ class _VenueShellState extends State<VenueShell> {
       bottomNavigationBar: DockNav(
         index: _index,
         items: DockNav.venueDock,
-        centerIcon: Icons.tune,
-        centerLabel: 'Atur venue',
+        centerIcon: Icons.add,
+        centerLabel: 'Tambah lapangan',
         onSelect: (i) => setState(() => _index = i),
-        onCreate: () => context.push('/venue/setup'),
+        onCreate: () => context.push('/venue/court/new'),
       ),
     );
   }
@@ -124,7 +124,7 @@ class _SetupPrompt extends StatelessWidget {
         children: [
           const Icon(Icons.sports_score, size: 28, color: C.primary),
           const SizedBox(height: 10),
-          const Text('Atur lapangan dulu', style: T.h2),
+          const Text('Tambah lapangan dulu', style: T.h2),
           const SizedBox(height: 6),
           Text(
             'Isi sekali: olahraga, kapasitas, harga per jam, dan jam buka. '
@@ -133,9 +133,9 @@ class _SetupPrompt extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           SebarButton(
-            label: 'Atur venue',
-            icon: Icons.tune,
-            onPressed: () => context.push('/venue/setup'),
+            label: 'Tambah lapangan',
+            icon: Icons.add,
+            onPressed: () => context.push('/venue/court/new'),
           ),
         ],
       ),
@@ -358,7 +358,7 @@ class _BookingRow extends StatelessWidget {
   }
 }
 
-/// Tab Lapangan: ringkasan isi form "Atur venue" + keluar.
+/// Tab Lapangan: daftar lapangan; menu ⋮ tiap lapangan untuk on/off dan edit.
 class _VenueCourts extends ConsumerWidget {
   const _VenueCourts();
 
@@ -385,10 +385,10 @@ class _VenueCourts extends ConsumerWidget {
               child: _CourtSummary(court: c),
             ),
           const SizedBox(height: 4),
-          SebarButton(
-            label: 'Atur venue',
-            icon: Icons.tune,
-            onPressed: () => context.push('/venue/setup'),
+          GhostButton(
+            label: 'Tambah lapangan',
+            icon: Icons.add,
+            onPressed: () => context.push('/venue/court/new'),
           ),
         ],
         const SizedBox(height: 12),
@@ -400,8 +400,8 @@ class _VenueCourts extends ConsumerWidget {
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
-                  'Akun venue tidak bisa join room. Semua pengaturan ada di '
-                  '"Atur venue".',
+                  'Lapangan nonaktif tidak tampil ke pemain dan tidak bisa '
+                  'dipesan. Akun venue tidak bisa join room.',
                   style: T.small,
                 ),
               ),
@@ -423,17 +423,47 @@ class _VenueCourts extends ConsumerWidget {
   }
 }
 
-class _CourtSummary extends StatelessWidget {
+enum _CourtAction { toggle, edit }
+
+class _CourtSummary extends ConsumerWidget {
   const _CourtSummary({required this.court});
 
   final ApiCourt court;
 
+  Future<void> _onAction(
+    BuildContext context,
+    WidgetRef ref,
+    _CourtAction a,
+  ) async {
+    switch (a) {
+      case _CourtAction.edit:
+        context.push('/venue/court/${court.id}');
+      case _CourtAction.toggle:
+        final on = !court.active;
+        final error = await ref
+            .read(venueSlotsProvider.notifier)
+            .setCourtActive(court, on);
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error ??
+                  (on
+                      ? '${court.name} aktif. Pemain bisa memesan.'
+                      : '${court.name} nonaktif. Tidak tampil ke pemain.'),
+            ),
+          ),
+        );
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     String hh(int h) => '${h.toString().padLeft(2, '0')}:00';
     final weekend = court.priceWeekend;
     return SurfaceCard(
       radius: 16,
+      padding: const EdgeInsets.fromLTRB(14, 8, 4, 14),
       color: court.active ? null : C.surfaceAlt,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -449,25 +479,60 @@ class _CourtSummary extends StatelessWidget {
                 ),
               ),
               Pill(
-                court.active ? 'Aktif' : 'Mati',
+                court.active ? 'Aktif' : 'Nonaktif',
                 color: court.active ? C.primaryDeep : C.muted,
                 background: court.active ? C.primarySoft : C.surface,
               ),
+              PopupMenuButton<_CourtAction>(
+                tooltip: 'Menu ${court.name}',
+                icon: const Icon(Icons.more_vert, color: C.muted),
+                onSelected: (a) => _onAction(context, ref, a),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: _CourtAction.toggle,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        court.active
+                            ? Icons.toggle_off_outlined
+                            : Icons.toggle_on_outlined,
+                      ),
+                      title: Text(court.active ? 'Nonaktifkan' : 'Aktifkan'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: _CourtAction.edit,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('Edit'),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            [
-              for (final s in court.allSports) '${s.sport.label} ${s.capacity}',
-            ].join(' · '),
-            style: T.small,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Sen–Jum ${rupiah(court.pricePerHour)}/jam'
-            '${weekend == null ? '' : ' · Sab–Min ${rupiah(weekend)}/jam'}'
-            ' · ${hh(court.openHour)}–${hh(court.closeHour)}',
-            style: T.small,
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  [
+                    for (final s in court.allSports)
+                      '${s.sport.label} ${s.capacity}',
+                  ].join(' · '),
+                  style: T.small,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Sen–Jum ${rupiah(court.pricePerHour)}/jam'
+                  '${weekend == null ? '' : ' · Sab–Min ${rupiah(weekend)}/jam'}'
+                  ' · ${hh(court.openHour)}–${hh(court.closeHour)}',
+                  style: T.small,
+                ),
+              ],
+            ),
           ),
         ],
       ),

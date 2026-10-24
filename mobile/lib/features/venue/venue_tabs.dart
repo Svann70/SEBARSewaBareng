@@ -59,12 +59,12 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
                     icon: Icons.sports_score,
                     title: 'Belum ada lapangan aktif',
                     message:
-                        'Atur lapangan sekali di "Atur venue", jadwal terisi '
-                        'otomatis dari jam buka.',
+                        'Tambah lapangan sekali, jadwal terisi otomatis dari '
+                        'jam buka.',
                     action: GhostButton(
-                      label: 'Atur venue',
-                      icon: Icons.tune,
-                      onPressed: () => context.push('/venue/setup'),
+                      label: 'Tambah lapangan',
+                      icon: Icons.add,
+                      onPressed: () => context.push('/venue/court/new'),
                     ),
                   )
                 : Column(

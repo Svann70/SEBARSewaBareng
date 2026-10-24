@@ -935,66 +935,45 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
     }
   }
 
-  /// Simpan form "Atur venue" sekaligus: data GOR lalu tiap lapangan
-  /// (baru = POST, lama = PATCH termasuk on/off). Berhenti di error pertama;
-  /// yang sudah tersimpan tetap tersimpan dan layar dimuat ulang.
-  Future<String?> saveSetup({
-    required String name,
-    required String address,
-    required String city,
-    required List<CourtDraft> courts,
-  }) async {
+  /// Simpan form lapangan: baru = POST, lama = PATCH. Status aktif tidak
+  /// disentuh di sini; on/off lewat [setCourtActive].
+  Future<String?> saveCourt(CourtDraft court) async {
+    final venueId = _venueId;
+    if (venueId == null) {
+      return 'Data venue belum dimuat. Tarik layar untuk muat ulang.';
+    }
     try {
-      var venueId = _venueId;
-      if (venueId == null) {
+      if (court.id == null) {
         final created = _asMap(
           await api.post(
-            '/venue/venues',
-            body: {'name': name, 'address': address, 'city': city},
+            '/venue/courts',
+            body: {'venueId': venueId, ...court.toJson()},
           ),
         );
-        venueId = created['id'] as String?;
-        if (venueId == null) return 'Venue gagal dibuat.';
+        // Simpan ulang setelah error berikutnya = ubah, bukan buat dobel.
+        court.id = created['id'] as String?;
       } else {
-        await api.patch(
-          '/venue/venues/$venueId',
-          body: {'name': name, 'address': address, 'city': city},
-        );
-      }
-      for (final court in courts) {
-        try {
-          if (court.id == null) {
-            final created = _asMap(
-              await api.post(
-                '/venue/courts',
-                body: {'venueId': venueId, ...court.toJson()},
-              ),
-            );
-            court.id = created['id'] as String?;
-            if (!court.active && court.id != null) {
-              await api.patch(
-                '/venue/courts/${court.id}',
-                body: {'status': 'MAINTENANCE'},
-              );
-            }
-          } else {
-            await api.patch(
-              '/venue/courts/${court.id}',
-              body: {
-                ...court.toJson(),
-                'status': court.active ? 'ACTIVE' : 'MAINTENANCE',
-              },
-            );
-          }
-        } catch (error) {
-          return '${court.name}: ${apiMessage(error)}';
-        }
+        await api.patch('/venue/courts/${court.id}', body: court.toJson());
       }
       return null;
     } catch (error) {
       return apiMessage(error);
     } finally {
       await refresh();
+    }
+  }
+
+  /// Aktif = tampil ke pemain dan bisa dipesan. Mati = tersembunyi, riwayat tetap.
+  Future<String?> setCourtActive(ApiCourt court, bool active) async {
+    try {
+      await api.patch(
+        '/venue/courts/${court.id}',
+        body: {'status': active ? 'ACTIVE' : 'MAINTENANCE'},
+      );
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
     }
   }
 
@@ -1074,7 +1053,7 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
   }
 }
 
-/// ── Setup lapangan (form "Atur venue") ──────────────────────────────────
+/// ── Form lapangan (tambah / edit) ────────────────────────────────────────
 
 /// Isian satu lapangan di form. [id] null = lapangan baru.
 class CourtDraft {

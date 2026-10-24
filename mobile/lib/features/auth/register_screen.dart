@@ -102,8 +102,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Akun ${_name.text.trim()} siap dipakai.')),
     );
-    // Akun venue baru langsung ke form "Atur venue" (diisi sekali di awal).
-    context.go(role == AccountRole.venue ? '/venue/setup' : role.home);
+    // Akun venue baru langsung ke form tambah lapangan (diisi sekali di awal).
+    context.go(role == AccountRole.venue ? '/venue/court/new' : role.home);
   }
 
   @override
