@@ -625,23 +625,6 @@ class VenuesNotifier extends Notifier<List<ApiVenue>> {
       return apiMessage(error);
     }
   }
-
-  /// Slot lapangan untuk tanggal tertentu. Kosong = belum ada/tidak bisa
-  /// dimuat; layar menampilkan pesan.
-  Future<List<ApiSlot>> slots(String venueId, DateTime day) async {
-    if (venueId.startsWith('seed-')) return const [];
-    try {
-      final data = _asMap(
-        await api.get('/venues/$venueId/slots', query: {'date': _apiDate(day)}),
-      );
-      return [
-        for (final item in _asList(data['items']))
-          ApiSlot.fromJson(_asMap(item)),
-      ];
-    } catch (_) {
-      return const [];
-    }
-  }
 }
 
 final venuesProvider = NotifierProvider<VenuesNotifier, List<ApiVenue>>(
@@ -918,16 +901,6 @@ class VenueSlotsNotifier extends Notifier<List<VenueSlot>> {
         '/venue/slots/$id',
         body: {'status': status == SlotStatus.closed ? 'BLOCKED' : 'OPEN'},
       );
-      await refresh();
-      return null;
-    } catch (error) {
-      return apiMessage(error);
-    }
-  }
-
-  Future<String?> setPriceRemote(String id, int price) async {
-    try {
-      await api.patch('/venue/slots/$id', body: {'price': price});
       await refresh();
       return null;
     } catch (error) {
@@ -1728,15 +1701,27 @@ class LobbiesNotifier extends Notifier<List<Lobby>> {
     }
   }
 
-  Future<String?> createRemote({
-    required String slotId,
+  /// Buat room di jam kosong mana pun di dalam jam buka lapangan; slot dibuat
+  /// server sekalian, harga = tarif hari itu × [hours].
+  Future<String?> createForHours({
+    required String courtId,
+    required DateTime start,
+    required int hours,
+    required Sport sport,
     required String title,
     required int quota,
   }) async {
     try {
       await api.post(
         '/lobbies',
-        body: {'slotId': slotId, 'title': title, 'quota': quota},
+        body: {
+          'courtId': courtId,
+          'startAt': start.toUtc().toIso8601String(),
+          'hours': hours,
+          'sport': sportToApi(sport),
+          'title': title,
+          'quota': quota,
+        },
       );
       await Future.wait([
         refresh(),
