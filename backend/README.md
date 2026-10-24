@@ -23,7 +23,7 @@ Error `RAISE EXCEPTION 'SEBAR::<KODE>'` dari DB dipetakan ke HTTP di `src/middle
 Seluruh skema ada di migrasi Drizzle `drizzle/` dan dijalankan dengan `npm run db:migrate` (tercatat
 di `drizzle.__drizzle_migrations`, yang sudah jalan dilewati). `0000_baseline` = skema dasar (enum,
 tabel, function/trigger aturan uang, view, RLS); semua migrasi idempoten, jadi aman juga untuk
-Supabase yang skemanya sudah ada. Skema untuk query: `db/schema/` (per area: `users`, `wallet`, `venues`, `lobbies`, `enums`).
+Supabase yang skemanya sudah ada. Skema untuk query: `db/schema/` (satu file per tabel, enum di `enums.js`).
 
 ```bash
 cd backend
@@ -49,12 +49,15 @@ juga aman karena semuanya idempoten):
 ### Menambah / mengubah tabel (Drizzle)
 
 `db/schema/` berisi **semua** 16 tabel lengkap dengan index, check, dan foreign key (hasil
-`drizzle-kit pull`), dipecah per area. Isinya harus sama persis dengan database: Drizzle membuat SQL
+`drizzle-kit pull`), satu file per tabel (mis. `court-slots.js`). Isinya harus sama persis dengan database: Drizzle membuat SQL
 dari selisih `db/schema/` vs `drizzle/meta`, jadi kalau ada yang dihapus dari `db/schema/`, migrasi
 berikutnya akan ikut menghapusnya dari database. Untuk tabel baru cukup tulis beberapa baris:
 
-1. Tambah tabel di file area yang cocok, mis. `db/schema/venues.js` (contoh: foto lapangan):
+1. Buat file baru `db/schema/court-photos.js` (contoh: foto lapangan):
    ```js
+   import { pgTable, uuid, text, smallint, timestamp } from "drizzle-orm/pg-core";
+   import { courts } from "./courts.js";
+
    export const courtPhotos = pgTable("court_photos", {
    	id: uuid().defaultRandom().primaryKey(),
    	courtId: uuid("court_id").notNull().references(() => courts.id, { onDelete: "cascade" }),
@@ -63,6 +66,7 @@ berikutnya akan ikut menghapusnya dari database. Untuk tabel baru cukup tulis be
    	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
    }).enableRLS();
    ```
+   lalu tambahkan `export * from "./court-photos.js";` di `db/schema/index.js`.
    Selalu `.enableRLS()`: Data API/anon key Supabase tidak boleh membaca tabel langsung.
 2. `npm run db:generate -- --name=court_photos` → file baru `drizzle/0004_court_photos.sql` + `drizzle/meta/`.
 3. **Baca SQL-nya.** Harus hanya berisi perubahan yang dimaksud (di contoh: `CREATE TABLE`, `ENABLE ROW
