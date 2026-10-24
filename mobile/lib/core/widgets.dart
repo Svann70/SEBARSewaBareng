@@ -935,7 +935,15 @@ class SheetWrap extends StatelessWidget {
           const SizedBox(height: 18),
           Text(title, style: T.h2),
           const SizedBox(height: 14),
-          ...children,
+          // Isi bisa lebih tinggi dari layar kecil: gulir, jangan overflow.
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: children,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1557,6 +1565,19 @@ final courtPhotosProvider =
       CourtPhotoNotifier.new,
     );
 
+/// Buang controller milik dialog/bottom sheet setelah animasi tutupnya
+/// selesai. Future dari showDialog/showModalBottomSheet selesai saat route
+/// di-pop, sementara TextField di dalamnya masih dibangun selama animasi;
+/// dispose langsung memicu "TextEditingController was used after being
+/// disposed" dan layar merah.
+void disposeAfterClose(List<ChangeNotifier> controllers) {
+  Future.delayed(const Duration(seconds: 1), () {
+    for (final controller in controllers) {
+      controller.dispose();
+    }
+  });
+}
+
 /// Kunci foto: venue + lapangan, huruf kecil.
 String courtPhotoKey(String venue, String court) =>
     '${venue.trim().toLowerCase()}|${court.trim().toLowerCase()}';
@@ -1581,10 +1602,6 @@ class CourtPhoto extends ConsumerWidget {
 
   String get photoKey => courtPhotoKey(venue, court);
 
-  /// Foto bawaan kalau venue belum memilih sendiri.
-  static String defaultUrl(String key) =>
-      'https://picsum.photos/seed/sebar-${_hash(key)}/800/450';
-
   /// Pilihan foto bawaan untuk pemilih foto di sisi venue.
   static List<String> presets(String key) => [
     for (var i = 1; i <= 6; i++)
@@ -1601,8 +1618,9 @@ class CourtPhoto extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final url =
-        ref.watch(courtPhotosProvider)[photoKey] ?? defaultUrl(photoKey);
+    // Tanpa foto pilihan venue: placeholder hijau, bukan foto acak yang
+    // bisa tidak nyambung dengan olahraganya.
+    final url = ref.watch(courtPhotosProvider)[photoKey];
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: SizedBox(
@@ -1611,15 +1629,18 @@ class CourtPhoto extends ConsumerWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.network(
-              url,
-              fit: BoxFit.cover,
-              cacheWidth: 720,
-              filterQuality: FilterQuality.medium,
-              errorBuilder: (_, _, _) => const _PhotoFallback(),
-              loadingBuilder: (_, child, progress) =>
-                  progress == null ? child : const _PhotoFallback(),
-            ),
+            if (url == null)
+              const _PhotoFallback()
+            else
+              Image.network(
+                url,
+                fit: BoxFit.cover,
+                cacheWidth: 720,
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (_, _, _) => const _PhotoFallback(),
+                loadingBuilder: (_, child, progress) =>
+                    progress == null ? child : const _PhotoFallback(),
+              ),
             if (scrim)
               DecoratedBox(
                 decoration: BoxDecoration(

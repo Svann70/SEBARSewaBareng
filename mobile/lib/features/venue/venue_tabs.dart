@@ -141,11 +141,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
             child: Row(
               children: [
                 Expanded(
-                  child: _Stat(
-                    value: '$booked',
-                    label: 'Terisi',
-                    color: C.ink,
-                  ),
+                  child: _Stat(value: '$booked', label: 'Terisi', color: C.ink),
                 ),
                 _VLine(),
                 Expanded(
@@ -237,11 +233,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              const Icon(
-                Icons.storefront_outlined,
-                size: 20,
-                color: C.primary,
-              ),
+              const Icon(Icons.storefront_outlined, size: 20, color: C.primary),
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(
@@ -409,7 +401,7 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
         ],
       ),
     );
-    url.dispose();
+    disposeAfterClose([url]);
     if (picked == null) return;
     ref.read(courtPhotosProvider.notifier).setPhoto(key, picked);
     if (!mounted) return;
@@ -585,15 +577,30 @@ class _VenueScheduleTabState extends ConsumerState<VenueScheduleTab> {
         ],
       ),
     );
-    final price = int.tryParse((value ?? '').replaceAll('.', ''));
-    if (price == null || price < 0) return;
+    disposeAfterClose([controller]);
+    if (value == null) return;
+    final price = int.tryParse(value.replaceAll('.', ''));
+    if (!_validPrice(price)) {
+      if (mounted) _showPriceError(context);
+      return;
+    }
     final error = await ref
         .read(venueSlotsProvider.notifier)
-        .setPriceRemote(slot.id, price);
+        .setPriceRemote(slot.id, price!);
     if (!mounted || error == null) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
   }
 }
+
+/// Batas harga sama dengan validasi backend (Rp1.000 – Rp100.000.000).
+bool _validPrice(int? price) =>
+    price != null && price >= 1000 && price <= 100000000;
+
+const _priceRangeMessage = 'Harga harus Rp1.000 – Rp100.000.000.';
+
+void _showPriceError(BuildContext context) => ScaffoldMessenger.of(
+  context,
+).showSnackBar(const SnackBar(content: Text(_priceRangeMessage)));
 
 /// Pilihan foto bawaan pada sheet ganti foto lapangan.
 class _PhotoChoice extends StatelessWidget {
@@ -830,7 +837,8 @@ class _SlotRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      slot.guest ?? (slot.courtName ?? 'Lapangan ${slot.court}'),
+                      slot.guest ??
+                          (slot.courtName ?? 'Lapangan ${slot.court}'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -913,10 +921,8 @@ Future<void> showAddSlotSheet(
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _AddSlotSheet(
-      day: day ?? DateTime.now(),
-      dayPicker: dayPicker,
-    ),
+    builder: (_) =>
+        _AddSlotSheet(day: day ?? DateTime.now(), dayPicker: dayPicker),
   );
 }
 
@@ -1015,9 +1021,7 @@ Future<void> showCreateVenueSheet(BuildContext context, WidgetRef ref) async {
   final venueName = name.text.trim();
   final addr = address.text.trim();
   final cityName = city.text.trim();
-  name.dispose();
-  address.dispose();
-  city.dispose();
+  disposeAfterClose([name, address, city]);
   if (!saved || !context.mounted) return;
   final error = await ref
       .read(venueSlotsProvider.notifier)
@@ -1047,9 +1051,21 @@ class _AddSlotSheet extends ConsumerStatefulWidget {
 
 class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
   int _court = 1;
-  int _hour = 8;
+  late int _hour = _firstHour(widget.day);
   int _duration = 2;
   bool _reloading = false;
+
+  /// Ditampilkan di dalam sheet: snackbar tertutup oleh sheet.
+  String? _error;
+
+  /// Jam pertama yang belum lewat (grid jam 08–21).
+  static int _firstHour(DateTime day) {
+    final now = DateTime.now();
+    final isToday =
+        day.year == now.year && day.month == now.month && day.day == now.day;
+    return isToday ? (now.hour + 1).clamp(8, 21) : 8;
+  }
+
   late DateTime _day = DateTime(
     widget.day.year,
     widget.day.month,
@@ -1081,6 +1097,11 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
     if (court == null) return const {};
     final dayStart = DateTime(_day.year, _day.month, _day.day);
     final busy = <int>{};
+    // Backend menolak slot yang mulai di masa lalu.
+    final now = DateTime.now();
+    for (var h = 8; h <= 21; h++) {
+      if (!dayStart.add(Duration(hours: h)).isAfter(now)) busy.add(h);
+    }
     for (final s in all) {
       if (s.courtId != court.id) continue;
       if (DateTime(s.start.year, s.start.month, s.start.day) != dayStart) {
@@ -1099,13 +1120,10 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
     final courts = ref.read(venueSlotsProvider.notifier).courts;
     final court = _court <= courts.length ? courts[_court - 1] : null;
     if (court == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Akun venue ini belum punya lapangan aktif.'),
-        ),
-      );
+      setState(() => _error = 'Akun venue ini belum punya lapangan aktif.');
       return;
     }
+    setState(() => _error = null);
     final start = DateTime(_day.year, _day.month, _day.day, _hour);
     final error = await ref
         .read(venueSlotsProvider.notifier)
@@ -1117,9 +1135,7 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
         );
     if (!mounted) return;
     if (error != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error)));
+      setState(() => _error = error);
       return;
     }
     Navigator.pop(context);
@@ -1171,16 +1187,23 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
         ],
       ),
     );
-    controller.dispose();
-    final price = int.tryParse((value ?? '').replaceAll('.', ''));
-    if (price == null) return;
+    disposeAfterClose([controller]);
+    if (value == null) return;
+    final price = int.tryParse(value.replaceAll('.', ''));
+    if (!_validPrice(price)) {
+      if (mounted) setState(() => _error = _priceRangeMessage);
+      return;
+    }
     final error = await ref
         .read(venueSlotsProvider.notifier)
-        .setCourtPriceRemote(court.id, price);
+        .setCourtPriceRemote(court.id, price!);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error ?? 'Tarif ${court.name} diperbarui.')),
-    );
+    setState(() => _error = error);
+    if (error == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Tarif ${court.name} diperbarui.')),
+      );
+    }
   }
 
   /// Validasi sebelum kirim — samakan dengan skema backend
@@ -1290,9 +1313,7 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
     final pricePerHour = int.tryParse(price.text.trim());
     final cap = int.tryParse(capacity.text.trim());
     final courtName = name.text.trim();
-    name.dispose();
-    price.dispose();
-    capacity.dispose();
+    disposeAfterClose([name, price, capacity]);
     if (!saved || !mounted) return;
     final error = await ref
         .read(venueSlotsProvider.notifier)
@@ -1303,10 +1324,12 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
           capacity: cap ?? 0,
         );
     if (!mounted) return;
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error ?? 'Lapangan $courtName ditambahkan.')),
-    );
+    setState(() => _error = error);
+    if (error == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lapangan $courtName ditambahkan.')),
+      );
+    }
   }
 
   /// Isi daftar lapangan saat kosong: spinner saat memuat, ajakan buat
@@ -1354,7 +1377,10 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
             style: T.small,
           ),
           const SizedBox(height: 2),
-          TextButton(onPressed: _retryLoad, child: const Text('Coba muat ulang')),
+          TextButton(
+            onPressed: _retryLoad,
+            child: const Text('Coba muat ulang'),
+          ),
         ],
       );
     }
@@ -1394,9 +1420,11 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
           const SizedBox(height: 14),
           _DayStrip(
             selected: dayIndex,
-            onPick: (d) => setState(
-              () => _day = today0.add(Duration(days: d)),
-            ),
+            onPick: (d) => setState(() {
+              _day = today0.add(Duration(days: d));
+              _hour = _firstHour(_day);
+              _error = null;
+            }),
           ),
         ],
         const SizedBox(height: 14),
@@ -1419,7 +1447,10 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
               for (var c = 1; c <= courtCount; c++) ...[
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => setState(() => _court = c),
+                    onTap: () => setState(() {
+                      _court = c;
+                      _error = null;
+                    }),
                     child: Container(
                       height: 44,
                       alignment: Alignment.center,
@@ -1488,7 +1519,12 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
               // tombolnya sejak awal, bukan gagal saat disimpan.
               final taken = busyHours.contains(h);
               return GestureDetector(
-                onTap: taken ? null : () => setState(() => _hour = h),
+                onTap: taken
+                    ? null
+                    : () => setState(() {
+                        _hour = h;
+                        _error = null;
+                      }),
                 child: Container(
                   width: 56,
                   alignment: Alignment.center,
@@ -1524,9 +1560,9 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
           const SizedBox(height: 6),
           Text(
             hourBlocked
-                ? 'Jam ${_hour.toString().padLeft(2, '0')}:00 sudah terpakai '
-                      'di ${court.name}. Pilih jam lain.'
-                : 'Jam abu-abu sudah terpakai di ${court.name}.',
+                ? 'Jam ${_hour.toString().padLeft(2, '0')}:00 sudah lewat atau '
+                      'terpakai di ${court.name}. Pilih jam lain.'
+                : 'Jam abu-abu sudah lewat atau terpakai di ${court.name}.',
             style: T.caption,
           ),
         ],
@@ -1538,7 +1574,10 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
             for (var d = 1; d <= 3; d++) ...[
               Expanded(
                 child: GestureDetector(
-                  onTap: () => setState(() => _duration = d),
+                  onTap: () => setState(() {
+                    _duration = d;
+                    _error = null;
+                  }),
                   child: Container(
                     height: 44,
                     alignment: Alignment.center,
@@ -1600,6 +1639,10 @@ class _AddSlotSheetState extends ConsumerState<_AddSlotSheet> {
             ],
           ),
         ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(_error!, style: T.small.copyWith(color: C.danger)),
+        ],
         const SizedBox(height: 16),
         SebarButton(
           label: 'Buka slot',
