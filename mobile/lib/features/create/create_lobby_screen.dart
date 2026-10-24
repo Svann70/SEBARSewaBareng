@@ -871,10 +871,17 @@ class _SlotRow extends StatelessWidget {
             width: 96,
             child: Padding(
               padding: const EdgeInsets.all(3),
-              child: _SlotCell(
-                slot: _slotOf(court),
-                selected: _slotOf(court)?.id == selectedId,
-                onTap: onPick,
+              child: Builder(
+                builder: (_) {
+                  final slot = _slotOf(court);
+                  return _SlotCell(
+                    slot: slot,
+                    // Tanpa slot bukan "dipilih" walau belum ada pilihan
+                    // (null == null).
+                    selected: slot != null && slot.id == selectedId,
+                    onTap: onPick,
+                  );
+                },
               ),
             ),
           ),
