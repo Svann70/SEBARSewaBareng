@@ -23,7 +23,7 @@ Error `RAISE EXCEPTION 'SEBAR::<KODE>'` dari DB dipetakan ke HTTP di `src/middle
 Seluruh skema ada di migrasi Drizzle `drizzle/` dan dijalankan dengan `npm run db:migrate` (tercatat
 di `drizzle.__drizzle_migrations`, yang sudah jalan dilewati). `0000_baseline` = skema dasar (enum,
 tabel, function/trigger aturan uang, view, RLS); semua migrasi idempoten, jadi aman juga untuk
-Supabase yang skemanya sudah ada. Skema untuk query: `db/schema.js`.
+Supabase yang skemanya sudah ada. Skema untuk query: `db/schema/` (per area: `users`, `wallet`, `venues`, `lobbies`, `enums`).
 
 ```bash
 cd backend
@@ -48,12 +48,12 @@ juga aman karena semuanya idempoten):
 
 ### Menambah / mengubah tabel (Drizzle)
 
-`db/schema.js` panjang (±420 baris) karena berisi **semua** 16 tabel lengkap dengan index, check, dan
-foreign key, hasil `drizzle-kit pull`. Isinya harus sama persis dengan database: Drizzle membuat SQL
-dari selisih `schema.js` vs `drizzle/meta`, jadi kalau ada yang dihapus dari `schema.js`, migrasi
+`db/schema/` berisi **semua** 16 tabel lengkap dengan index, check, dan foreign key (hasil
+`drizzle-kit pull`), dipecah per area. Isinya harus sama persis dengan database: Drizzle membuat SQL
+dari selisih `db/schema/` vs `drizzle/meta`, jadi kalau ada yang dihapus dari `db/schema/`, migrasi
 berikutnya akan ikut menghapusnya dari database. Untuk tabel baru cukup tulis beberapa baris:
 
-1. Tambah tabel di akhir `db/schema.js` (contoh: foto lapangan):
+1. Tambah tabel di file area yang cocok, mis. `db/schema/venues.js` (contoh: foto lapangan):
    ```js
    export const courtPhotos = pgTable("court_photos", {
    	id: uuid().defaultRandom().primaryKey(),
@@ -66,13 +66,13 @@ berikutnya akan ikut menghapusnya dari database. Untuk tabel baru cukup tulis be
    Selalu `.enableRLS()`: Data API/anon key Supabase tidak boleh membaca tabel langsung.
 2. `npm run db:generate -- --name=court_photos` → file baru `drizzle/0004_court_photos.sql` + `drizzle/meta/`.
 3. **Baca SQL-nya.** Harus hanya berisi perubahan yang dimaksud (di contoh: `CREATE TABLE`, `ENABLE ROW
-   LEVEL SECURITY`, foreign key). Ada `DROP` yang tidak diminta? Berhenti, cek `schema.js`.
+   LEVEL SECURITY`, foreign key). Ada `DROP` yang tidak diminta? Berhenti, cek `db/schema/`.
 4. `npm run db:migrate` ke database lokal, lalu `npm test` (tes juga menjalankan migrasi).
-5. Commit `db/schema.js` + `drizzle/0004_*.sql` + `drizzle/meta/` dalam satu PR.
+5. Commit `db/schema/` + `drizzle/0004_*.sql` + `drizzle/meta/` dalam satu PR.
 6. Setelah PR masuk `main`: `npm run db:migrate` dengan `.env` Supabase.
 
-Mengubah kolom sama caranya: ubah definisinya di `schema.js`, lalu langkah 2–6. Trigger, function, atau
-constraint khusus (mis. `EXCLUDE`) tidak bisa ditulis di `schema.js`: `npx drizzle-kit generate --custom
+Mengubah kolom sama caranya: ubah definisinya di `db/schema/`, lalu langkah 2–6. Trigger, function, view,
+atau constraint khusus (mis. `EXCLUDE`) tidak ditulis di `db/schema/`: `npx drizzle-kit generate --custom
 --name=<nama>` lalu tulis SQL-nya sendiri di file yang dibuat (buat idempoten: `IF NOT EXISTS`,
 `OR REPLACE`). **Jangan pakai `drizzle-kit push`**: Drizzle tidak mengenal trigger, function, `EXCLUDE`
 anti tumpang tindih, dan RLS di database ini, jadi `push` bisa menghapusnya.
