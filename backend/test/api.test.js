@@ -36,8 +36,10 @@ before(async () => {
   process.env.LOGIN_RATE_LIMIT = '100000';
   const { createApp } = await import('../src/app.js');
   ({ pool: db } = await import('../src/db/pool.js'));
-  // Schema = fixture dump + drizzle/ migrations, exactly as on Supabase.
-  await (await import('../db/migrate.js')).runMigrations(db);
+  // Schema = drizzle/ migrations, exactly as on Supabase.
+  const { runMigrations, pendingMigrations } = await import('../db/migrate.js');
+  await runMigrations(db);
+  assert.deepEqual(await pendingMigrations(db), []);
   server = createApp().listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
 });

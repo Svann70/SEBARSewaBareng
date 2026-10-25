@@ -25,6 +25,8 @@ di `drizzle.__drizzle_migrations`, yang sudah jalan dilewati). `0000_baseline` =
 tabel, function/trigger aturan uang, view, RLS); semua migrasi idempoten, jadi aman juga untuk
 Supabase yang skemanya sudah ada. Skema untuk query: `db/schema/` (satu file per tabel, enum di `enums.js`).
 
+API menolak start selama ada migrasi yang belum jalan (jalankan `npm run db:migrate`).
+
 ```bash
 cd backend
 npm install

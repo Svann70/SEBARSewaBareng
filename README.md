@@ -30,17 +30,15 @@ Full design document: [`SDD_SEBAR.md`](SDD_SEBAR.md) · API reference: [`backend
 
 ### 1. Database
 
-Start a throwaway Postgres and load the full schema (tables, triggers, functions, views):
+Start a throwaway Postgres (the schema is created by the migrations in step 2):
 
 ```bash
 docker run -d --name sebar-pg -e POSTGRES_PASSWORD=sebar -e POSTGRES_DB=sebar -p 5432:5432 postgres:17-alpine
-docker exec -i sebar-pg psql -U postgres -d sebar < backend/test/fixtures/schema.sql
 ```
 
-> Using **Supabase** instead? The schema lives in `backend/db/` (run `00_extensions.sql` →
-> `01_enums.sql` → `tables/` → `functions/` → `triggers/` → `views/` in order) and the connection
-> needs its session-pooler URL + CA certificate — see [backend/README.md](backend/README.md) for the
-> exact steps.
+> Using **Supabase** instead? The same migrations apply there; the connection needs its
+> session-pooler URL + CA certificate — see [backend/README.md](backend/README.md) for the exact
+> steps.
 
 ### 2. Backend
 
@@ -61,11 +59,12 @@ JWT_SECRET=<paste 32+ random chars, see comment in .env.example>
 `ALLOW_SANDBOX_TOPUP=1` (already set in the example) lets the wallet top up work without a payment
 gateway — keep it for local/demo use.
 
-Start the API and seed the demo data (venue, courts, slots for the next 7 days, accounts below):
+Create the schema (tables, triggers, functions, views), seed the demo data (venue, courts, slots for
+the next 7 days, accounts below) and start the API. The API refuses to start while migrations are
+pending.
 
 ```bash
-npm run seed
-npm run dev
+npm run db:migrate && npm run seed && npm run dev
 curl http://localhost:3000/health      # → {"ok":true}
 ```
 
@@ -114,7 +113,6 @@ Docker, uses its own Postgres on port 55432):
 
 ```bash
 docker run -d --name sebar-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=sebar_test -p 127.0.0.1:55432:5432 postgres:17-alpine
-docker exec -i sebar-test-pg psql -U postgres -d sebar_test < backend/test/fixtures/schema.sql
 cd backend
 echo 'TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/sebar_test' > .env.test
 npm test
