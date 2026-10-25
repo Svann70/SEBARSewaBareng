@@ -19,6 +19,7 @@ import 'features/rooms/rooms_screen.dart';
 import 'features/venue/court_form.dart';
 import 'features/venue/venue_shell.dart';
 import 'features/wallet/wallet_screen.dart';
+import 'features/auth/forgot_password_screen.dart';
 
 /// Rute yang boleh dibuka tanpa login.
 const _publicRoutes = {'/login', '/register'};
@@ -77,6 +78,7 @@ final _routes = <RouteBase>[
     builder: (_, s) => CourtFormScreen(courtId: s.pathParameters['id']),
   ),
   GoRoute(path: '/community', builder: (_, _) => const CommunityScreen()),
+  GoRoute(path: '/forgot-password',builder: (context, state) => const ForgotPasswordScreen()),
 ];
 
 class SebarApp extends ConsumerWidget {

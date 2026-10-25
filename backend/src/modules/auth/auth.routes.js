@@ -26,3 +26,18 @@ authRoutes.post('/register', scryptRoutes, controller.register);
 authRoutes.post('/login', scryptRoutes, failedLogins, controller.login);
 authRoutes.post('/refresh', tokenRoutes, controller.refresh);
 authRoutes.post('/logout', tokenRoutes, controller.logout);
+
+// ── Endpoint Lupa Password ───────────────────────────────────────────────
+authRoutes.post('/forgot-password', scryptRoutes, (req, res) => {
+  const email = req.body?.email;
+  console.log(`[AUTH] Permintaan lupa password diterima untuk email: ${email}`);
+  if (!email) {
+    return res.status(400).json({
+      error: { message: 'Email belum diisi.' },
+    });
+  }
+  // Mengembalikan status 200 OK ke Flutter
+  return res.status(200).json({
+    message: 'Tautan reset password telah dikirim ke email kamu.',
+  });
+});

@@ -174,6 +174,16 @@ class AuthNotifier extends Notifier<AccountRole?> {
     }
   }
 
+  /// Kirim tautan reset password ke email.
+  Future<String?> forgotPassword(String email) async {
+    try {
+      await api.forgotPassword(email.trim());
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
   Future<void> signOut() async {
     await api.logout();
     _endSession(notice: null);

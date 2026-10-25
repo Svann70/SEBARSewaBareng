@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../data/state.dart';
+import 'forgot_password_screen.dart';
 
 /// Satu pintu masuk untuk pemain dan mitra venue — tidak ada pemilih peran,
 /// peran dibaca dari akun yang dipilih saat mendaftar supaya tidak membingungkan.
@@ -105,12 +106,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Tautan reset dikirim ke emailmu.'),
-                  ),
-                ),
-                child: const Text('Lupa password?'),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const ForgotPasswordScreen(),
+                    ),
+                  );
+                },
+                child: const Text('Lupa Password?'),
               ),
             ),
             const SizedBox(height: 10),

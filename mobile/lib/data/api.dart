@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// Error dari API atau jaringan. [message] sudah siap ditampilkan ke pengguna.
-class ApiException implements Exception {
+class ApiException {
   const ApiException(this.code, this.message, {this.status = 0});
 
   final String code;
@@ -107,6 +107,13 @@ class ApiClient {
     _applySession(data);
     return data;
   }
+
+  Future<void> forgotPassword(String email) => _send(
+    'POST',
+    '/auth/forgot-password',
+    body: {'email': email},
+    auth: false,
+  );
 
   Future<void> logout() async {
     final token = _refreshToken;
