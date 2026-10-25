@@ -6,91 +6,147 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../data/state.dart';
 
-class ProfileScreen extends ConsumerWidget {
+/// Riwayat yang tampil sebelum diringkas; sisanya lewat tombol "Lihat semua"
+/// supaya menu tetap dekat atas dan halaman pendek tidak perlu di-scroll.
+const _historyPreview = 5;
+
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  bool _busy = false;
+  bool _showAll = false;
+
+  Future<void> _logout() async {
+    setState(() => _busy = true);
+    await ref.read(authProvider.notifier).signOut();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    context.go('/login');
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final bookings = ref.watch(bookingsProvider);
-    final played = bookings.length + 11;
-    final checkIn = bookings.where((b) => b.checkedIn).length + 9;
+    final user = ref.watch(sessionProvider);
+    final played = bookings.length;
+    final checkIn = bookings.where((b) => b.checkedIn).length;
+    final initial = (user?.fullName.trim().isEmpty ?? true)
+        ? 'R'
+        : user!.fullName.trim()[0].toUpperCase();
+    final hasMore = bookings.length > _historyPreview;
+    final visible = _showAll ? bookings : bookings.take(_historyPreview);
 
     return SafeArea(
       bottom: false,
-      child: ListView(
-        padding: kScreenPad,
-        children: [
-          const Text('Profil', style: T.h1),
-          const SizedBox(height: 2),
-          const Text('Rekam jejak main kamu.', style: T.small),
-          const SizedBox(height: 16),
-          _ProfileHero(played: played, checkIn: checkIn),
-          const SizedBox(height: 22),
-          const SectionHeader('Riwayat main'),
-          const SizedBox(height: 10),
-          if (bookings.isEmpty)
-            const EmptyState(
-              icon: Icons.history,
-              title: 'Belum ada riwayat',
-              message: 'Main pertama kamu akan muncul di sini.',
-            )
-          else
-            for (final b in bookings)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _PlayRow(booking: b),
+      // Tinggi minimum mengikuti viewport: konten pendek tidak di-scroll, padahal
+      // ketika riwayat panjang tetap bisa menggulir seperti biasa.
+      child: LayoutBuilder(
+        builder: (context, viewport) => SingleChildScrollView(
+          child: ConstrainedBox(
+            // 36 = pad atas 12 (kScreenPadTop) + jarak ekor 24.
+            constraints: BoxConstraints(
+              minHeight: (viewport.maxHeight - 36).clamp(0.0, double.infinity),
+            ),
+            child: Padding(
+              padding: kScreenPadTop,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Profil', style: T.h1),
+                  const SizedBox(height: 2),
+                  const Text('Rekam jejak main kamu.', style: T.small),
+                  const SizedBox(height: 16),
+                  _ProfileHero(
+                    name: user?.fullName ?? 'Raka',
+                    email: user?.email ?? 'raka@sebar.app',
+                    phone: user?.phone,
+                    initial: initial,
+                    played: played,
+                    checkIn: checkIn,
+                    onEdit: () => context.push('/profile/edit'),
+                  ),
+                  const SizedBox(height: 12),
+                  SurfaceCard(
+                    radius: 24,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 2,
+                    ),
+                    child: Column(
+                      children: [
+                        const _MenuRow(
+                          icon: Icons.receipt_long_outlined,
+                          label: 'Riwayat pembayaran',
+                        ),
+                        const Divider(),
+                        const _MenuRow(
+                          icon: Icons.help_outline,
+                          label: 'Pusat bantuan',
+                        ),
+                        const Divider(),
+                        _MenuRow(
+                          icon: Icons.logout,
+                          label: 'Keluar',
+                          danger: true,
+                          onTap: _busy ? null : _logout,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  SectionHeader(
+                    'Riwayat main',
+                    action: hasMore ? (_showAll ? 'Tutup' : 'Lihat semua') : null,
+                    onTap: hasMore ? () => setState(() => _showAll = !_showAll) : null,
+                  ),
+                  const SizedBox(height: 10),
+                  if (bookings.isEmpty)
+                    // Lebar penuh supaya ikon dan teks EmptyState benar-benar di tengah.
+                    const SizedBox(width: double.infinity, child: EmptyState(
+                      icon: Icons.history,
+                      title: 'Belum ada riwayat',
+                      message: 'Main pertama kamu akan muncul di sini.',
+                    ))
+                  else
+                    for (final b in visible)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _PlayRow(booking: b),
+                      ),
+                  const SizedBox(height: 24),
+                ],
               ),
-          const SizedBox(height: 12),
-          SurfaceCard(
-            radius: 24,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Mode mitra', style: T.h3),
-                const SizedBox(height: 4),
-                const Text(
-                  'Kelola jadwal lapangan, scan tiket, dan pencairan lewat '
-                  'akun mitra venue.',
-                  style: T.small,
-                ),
-                const SizedBox(height: 12),
-                GhostButton(
-                  label: 'Masuk sebagai mitra',
-                  icon: Icons.storefront_outlined,
-                  height: 46,
-                  onPressed: () => context.go('/login'),
-                ),
-              ],
             ),
           ),
-          const SizedBox(height: 12),
-          SurfaceCard(
-            radius: 24,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-            child: const Column(
-              children: [
-                _MenuRow(
-                  icon: Icons.receipt_long_outlined,
-                  label: 'Riwayat pembayaran',
-                ),
-                Divider(),
-                _MenuRow(icon: Icons.help_outline, label: 'Pusat bantuan'),
-                Divider(),
-                _MenuRow(icon: Icons.logout, label: 'Keluar', danger: true),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
 class _ProfileHero extends StatelessWidget {
-  const _ProfileHero({required this.played, required this.checkIn});
+  const _ProfileHero({
+    required this.name,
+    required this.email,
+    required this.initial,
+    required this.played,
+    required this.checkIn,
+    this.phone,
+    this.onEdit,
+  });
 
+  final String name;
+  final String email;
+  final String? phone;
+  final String initial;
   final int played;
   final int checkIn;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -107,38 +163,47 @@ class _ProfileHero extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: C.primary,
+                  color: C.primarySoft,
                   shape: BoxShape.circle,
-                  border: Border.all(color: C.primarySoft, width: 4),
+                  border: Border.all(color: C.surface, width: 3),
                 ),
                 alignment: Alignment.center,
-                child: const Text(
-                  'R',
-                  style: TextStyle(
+                child: Text(
+                  initial,
+                  style: const TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    color: C.primary,
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Raka Pratama',
+                      name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: T.h3,
                     ),
-                    SizedBox(height: 1),
+                    const SizedBox(height: 1),
                     Text(
-                      'raka@sebar.app · Bandung',
+                      email,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: T.small,
                     ),
+                    if (phone != null && phone!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        phone!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: T.small,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -148,40 +213,40 @@ class _ProfileHero extends StatelessWidget {
                 background: C.primarySoft,
                 icon: Icons.check_circle_outline,
               ),
+              const SizedBox(width: 4),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Edit profil',
+                icon: const Icon(Icons.edit_outlined, size: 20, color: C.ink),
+                onPressed: onEdit,
+              ),
             ],
           ),
           const SizedBox(height: 20),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: StatRing(
+                child: CountCard(
+                  icon: Icons.sports_soccer,
                   value: '$played',
                   label: 'Main',
-                  caption: 'sesi selesai',
-                  icon: Icons.sports_soccer,
-                  progress: played / 40,
-                  color: C.primary,
                 ),
               ),
               Expanded(
-                child: StatRing(
+                child: CountCard(
+                  icon: Icons.check_circle_outline,
                   value: '$checkIn',
-                  label: 'Check-in',
-                  caption: 'tepat waktu',
-                  icon: Icons.qr_code_scanner,
-                  progress: played == 0 ? 0 : checkIn / played,
-                  color: C.primaryFill,
+                  label: 'Hadir',
+                  color: C.primaryCheck,
                 ),
               ),
               Expanded(
-                child: StatRing(
-                  value: '1',
-                  label: 'No-show',
-                  caption: 'dari 12 sesi',
-                  icon: Icons.block,
-                  progress: 1 / 12,
+                child: CountCard(
+                  icon: Icons.event_busy,
+                  value: '${(played - checkIn).clamp(0, played)}',
+                  label: 'Tidak datang',
                   color: C.amber,
+                  tint: C.amberSoft,
                 ),
               ),
             ],
@@ -261,33 +326,38 @@ class _MenuRow extends StatelessWidget {
     required this.icon,
     required this.label,
     this.danger = false,
+    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final bool danger;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Row(
-        children: [
-          Icon(icon, size: 19, color: danger ? C.danger : C.muted),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: danger ? C.danger : C.ink,
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 19, color: danger ? C.danger : C.muted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: danger ? C.danger : C.ink,
+                ),
               ),
             ),
-          ),
-          if (!danger)
-            const Icon(Icons.chevron_right, size: 20, color: C.muted),
-        ],
+            if (!danger)
+              const Icon(Icons.chevron_right, size: 20, color: C.muted),
+          ],
+        ),
       ),
     );
   }

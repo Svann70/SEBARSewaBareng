@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app.dart';
-import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../data/state.dart';
 
+/// Beranda gaya desain "Hijau": sapaan, chip olahraga, room di kotamu,
+/// lalu tiket berikutnya. Tanpa panel saldo/grafik — dompet punya layarnya.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -16,20 +17,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  final _search = TextEditingController();
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final wallet = ref.watch(walletProvider);
     final filter = ref.watch(filterProvider);
     final lobbies = ref.watch(filteredLobbiesProvider);
     final bookings = ref.watch(bookingsProvider);
+    final user = ref.watch(sessionProvider);
 
     return SafeArea(
       bottom: false,
@@ -37,73 +30,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         color: C.primary,
         backgroundColor: C.surface,
         onRefresh: () async {
-          await Future<void>.delayed(const Duration(milliseconds: 500));
+          await Future.wait([
+            ref.read(bookingsProvider.notifier).refresh(),
+            ref.read(lobbiesProvider.notifier).refresh(),
+          ]);
         },
         child: ListView(
           padding: kScreenPad,
           children: [
-            const _Greeting(),
-            const SizedBox(height: 16),
-            SearchField(
-              controller: _search,
-              onChanged: (value) =>
-                  ref.read(filterProvider.notifier).setQuery(value),
+            _Greeting(
+              name: user?.fullName ?? 'Raka',
+              onCommunity: () => context.push('/community'),
             ),
-            const SizedBox(height: 16),
-            _SaldoPanel(wallet: wallet, bookings: bookings.length),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Expanded(
-                  child: CountCard(
-                    icon: Icons.groups_outlined,
-                    value: '${lobbies.length}',
-                    label: 'Room',
-                    color: C.primary,
-                    tint: C.primarySoft,
-                  ),
-                ),
-                Expanded(
-                  child: CountCard(
-                    icon: Icons.confirmation_number_outlined,
-                    value: '${bookings.length}',
-                    label: 'Tiket',
-                    color: C.primary,
-                    tint: C.primarySoft,
-                  ),
-                ),
-                Expanded(
-                  child: CountCard(
-                    icon: Icons.qr_code_scanner,
-                    value: '${bookings.where((b) => b.checkedIn).length}',
-                    label: 'Check-in',
-                    color: C.primary,
-                    tint: C.primarySoft,
-                  ),
-                ),
-              ],
+            const SizedBox(height: 14),
+            const FadeSlideIn(child: _PromoCarousel()),
+            const SizedBox(height: 14),
+            _SportChips(
+              active: filter.sport,
+              onSelect: (sport) =>
+                  ref.read(filterProvider.notifier).setSport(sport),
             ),
-            const SizedBox(height: 18),
-            TrendChartCard(
-              title: 'Aktivitas main',
-              subtitle: 'sesi per bulan · 6 bulan terakhir',
-              headline: '18',
-              badge: '+6 sesi',
-              values: const [8, 10, 9, 14, 12, 18],
-              labels: const ['Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt'],
-            ),
-            const SizedBox(height: 18),
-            _SportCircles(active: filter.sport),
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
             _CityLine(
               city: filter.city,
-              count: lobbies.length,
               onTap: () => _pickCity(context, ref, filter.city),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             SectionHeader(
-              'Room tersedia',
-              action: 'Semua (${lobbies.length})',
+              'Room di ${filter.city == 'Semua kota' ? 'sekitarmu' : filter.city}',
+              action: 'Lihat semua',
               onTap: () => context.push('/rooms'),
             ),
             const SizedBox(height: 8),
@@ -123,38 +78,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               )
             else
-              for (var i = 0; i < lobbies.length && i < 5; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: RankRow(
-                    rank: i + 1,
-                    title: lobbies[i].title,
-                    subtitle:
-                        '${lobbies[i].venue} · '
-                        '${formatTime(lobbies[i].start)}–'
-                        '${formatTime(lobbies[i].end)}',
-                    value: lobbies[i].isFull
-                        ? 'Penuh'
-                        : '${lobbies[i].remaining} slot',
-                    background: _roomTint(i),
-                    avatars: [for (final m in lobbies[i].members) m.name],
-                    onTap: () => context.push('/lobby/${lobbies[i].id}'),
+              for (final (i, lobby) in lobbies.take(4).indexed)
+                FadeSlideIn(
+                  index: i,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: RoomCard(
+                      sport: lobby.sport.label,
+                      title: lobby.title,
+                      when:
+                          '${formatDate(lobby.start)} · '
+                          '${formatTime(lobby.start)}–${formatTime(lobby.end)}',
+                      place: '${lobby.venue} · ${lobby.court}',
+                      pricePerPerson: lobby.pricePerPerson,
+                      members: [for (final m in lobby.members) m.name],
+                      joined: lobby.joined,
+                      quota: lobby.quota,
+                      access: lobby.access.label.toUpperCase(),
+                      onTap: () => context.push('/lobby/${lobby.id}'),
+                    ),
                   ),
                 ),
-            const SizedBox(height: 6),
-            GhostButton(
-              label: 'Punya kode undangan?',
-              icon: Icons.vpn_key_outlined,
-              height: 48,
-              onPressed: () => _enterInviteCode(context, ref),
-            ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
             SectionHeader(
               'Tiket berikutnya',
-              action: 'Semua',
-              onTap: () => context.go('/home'),
+              action: 'Semua tiket',
+              onTap: () => context.push('/tickets'),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             if (bookings.isEmpty)
               const EmptyState(
                 icon: Icons.confirmation_number_outlined,
@@ -162,52 +113,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 message: 'Tiket terbit otomatis saat kuota room terpenuhi.',
               )
             else
-              for (final b in bookings.take(2))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: SurfaceCard(
-                    radius: 22,
-                    onTap: () => context.push('/ticket/${b.id}'),
-                    child: Row(
-                      children: [
-                        _SportAvatar(sport: b.sport),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                b.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: T.h3,
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                '${b.venue} · ${formatDate(b.start)} '
-                                '${formatTime(b.start)}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: T.small,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: C.primarySoft,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: const Icon(
-                            Icons.qr_code_2,
-                            size: 20,
-                            color: C.primaryDeep,
-                          ),
-                        ),
-                      ],
+              for (final (i, b) in bookings.take(2).indexed)
+                FadeSlideIn(
+                  index: i,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TicketTile(
+                      day: const [
+                        'Sen',
+                        'Sel',
+                        'Rab',
+                        'Kam',
+                        'Jum',
+                        'Sab',
+                        'Min',
+                      ][b.start.weekday - 1],
+                      date: '${b.start.day}',
+                      month: const [
+                        'Jan',
+                        'Feb',
+                        'Mar',
+                        'Apr',
+                        'Mei',
+                        'Jun',
+                        'Jul',
+                        'Agu',
+                        'Sep',
+                        'Okt',
+                        'Nov',
+                        'Des',
+                      ][b.start.month - 1],
+                      title: b.title,
+                      when: '${formatTime(b.start)} · ${b.court}',
+                      place: b.venue,
+                      onTap: () => context.push('/ticket/${b.id}'),
                     ),
                   ),
                 ),
@@ -217,19 +156,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  static Color _roomTint(int i) => switch (i % 4) {
-    0 => C.primarySoft,
-    2 => C.amberSoft,
-    3 => C.primarySoft,
-    _ => C.surface,
-  };
-
   Future<void> _pickCity(
     BuildContext context,
     WidgetRef ref,
     String current,
   ) async {
-    const cities = ['Semua kota', 'Bandung', 'Jakarta', 'Surabaya'];
+    final cities = <String>[
+      'Semua kota',
+      ...{for (final v in ref.read(venuesProvider)) v.city},
+      if (ref.read(venuesProvider).isEmpty) ...{for (final v in venues) v.city},
+    ];
     final picked = await showModalBottomSheet<String>(
       context: context,
       builder: (_) => SheetWrap(
@@ -241,13 +177,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               title: Text(
                 c,
                 style: TextStyle(
-                  fontWeight: c == current ? FontWeight.w800 : FontWeight.w600,
-                  fontSize: 15,
+                  fontWeight: c == current ? FontWeight.w600 : FontWeight.w400,
+                  fontSize: 14,
                   color: c == current ? C.primary : C.ink,
                 ),
               ),
               trailing: c == current
-                  ? const Icon(Icons.check_circle, color: C.primary, size: 20)
+                  ? const Icon(Icons.check, color: C.primary, size: 18)
                   : null,
               onTap: () => Navigator.pop(context, c),
             ),
@@ -256,94 +192,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     if (picked != null) ref.read(filterProvider.notifier).setCity(picked);
   }
-
-  Future<void> _enterInviteCode(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController();
-    final all = ref.read(lobbiesProvider);
-    final code = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Masuk dengan kode', style: T.h2),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Kode undangan dibagikan host lewat link room.',
-              style: T.small,
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(hintText: 'VOLI-SORE'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Batal', style: TextStyle(color: C.muted)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Masuk'),
-          ),
-        ],
-      ),
-    );
-    if (code == null || !context.mounted) return;
-    final lobby = lobbyByInviteCode(all, code);
-    if (lobby == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kode undangan tidak ditemukan.')),
-      );
-      return;
-    }
-    context.push('/lobby/${lobby.id}');
-  }
 }
 
 class _Greeting extends StatelessWidget {
-  const _Greeting();
+  const _Greeting({required this.name, required this.onCommunity});
+
+  final String name;
+  final VoidCallback onCommunity;
 
   @override
   Widget build(BuildContext context) {
+    final initial = name.trim().isEmpty ? 'S' : name.trim()[0].toUpperCase();
     return Row(
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Hai, Raka', style: T.h1),
+              Text('Hai, $name', style: T.h1),
               const SizedBox(height: 2),
               Text(formatLongDate(DateTime.now()), style: T.small),
             ],
           ),
         ),
-        CircleIconButton(
-          icon: Icons.forum_outlined,
-          badge: true,
-          onTap: () => context.push('/community'),
+        IconButton(
+          onPressed: onCommunity,
+          icon: const Icon(Icons.forum_outlined, size: 20, color: C.faint),
+          visualDensity: VisualDensity.compact,
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 2),
         Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: C.primary,
+          width: 38,
+          height: 38,
+          decoration: const BoxDecoration(
+            color: C.primarySoft,
             shape: BoxShape.circle,
-            border: Border.all(color: C.surface, width: 3),
-            boxShadow: C.cardShadow,
           ),
           alignment: Alignment.center,
-          child: const Text(
-            'R',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 15.5,
+          child: Text(
+            initial,
+            style: const TextStyle(
+              color: C.primary,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
             ),
           ),
         ),
@@ -352,204 +243,229 @@ class _Greeting extends StatelessWidget {
   }
 }
 
-/// Panel saldo pink pekat — teks putih aman (kontras ≥ 4,8:1).
-class _SaldoPanel extends StatelessWidget {
-  const _SaldoPanel({required this.wallet, required this.bookings});
-
-  final Wallet wallet;
-  final int bookings;
+class _PromoCarousel extends StatefulWidget {
+  const _PromoCarousel();
 
   @override
-  Widget build(BuildContext context) {
-    return SportPanel(
-      gradient: C.primaryPanel,
-      radius: 30,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Pill(
-                    'Saldo tersedia',
-                    color: Colors.white,
-                    background: Colors.black.withValues(alpha: 0.2),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              DarkPillButton(
-                label: 'Top up',
-                icon: Icons.add,
-                height: 38,
-                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Buka tab Dompet untuk top up.'),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            rupiah(wallet.available),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: T.numberLg.copyWith(color: Colors.white),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _HeroMeta(value: rupiah(wallet.held), label: 'Terkunci'),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: _HeroMeta(value: '$bookings', label: 'Tiket aktif'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  State<_PromoCarousel> createState() => _PromoCarouselState();
 }
 
-class _HeroMeta extends StatelessWidget {
-  const _HeroMeta({required this.value, required this.label});
+/// Banner promo geser manual. Tanpa timer supaya `pumpAndSettle` di tes
+/// tidak menunggu animasi tanpa henti.
+/// ponytail: autoplay dilewati; tambah kalau benar-benar diminta.
+class _PromoCarouselState extends State<_PromoCarousel> {
+  static const _promos = [
+    _Promo(
+      'PROMO',
+      'Jam pagi diskon 20%',
+      'Badminton & futsal · 06.00–09.00',
+      Icons.wb_sunny_outlined,
+      [Color(0xFFFFF1D6), Color(0xFFFFE1A8)],
+      C.ink,
+      '/rooms',
+    ),
+    _Promo(
+      'EVENT',
+      'Sparring komunitas Sabtu',
+      'Cari lawan, isi slot kosong di sekitarmu',
+      Icons.emoji_events_outlined,
+      C.primaryPanel,
+      C.ink,
+      '/community',
+    ),
+    _Promo(
+      'GRATIS',
+      'Ajak 3 teman, kamu gratis',
+      'Otomatis aktif saat room penuh',
+      Icons.card_giftcard,
+      C.inkPanel,
+      Colors.white,
+      '/create',
+    ),
+  ];
 
-  final String value;
-  final String label;
+  final _controller = PageController(viewportFraction: 0.94);
+  int _page = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Column(
       children: [
-        Flexible(
-          child: Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
+        SizedBox(
+          height: 172,
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: _promos.length,
+            onPageChanged: (i) => setState(() => _page = i),
+            itemBuilder: (context, i) => Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _PromoCard(
+                promo: _promos[i],
+                onTap: () => context.push(_promos[i].route),
+              ),
             ),
           ),
         ),
-        const SizedBox(width: 5),
-        Flexible(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var i = 0; i < _promos.length; i++)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _controller.animateToPage(
+                  i,
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 3,
+                    vertical: 8,
+                  ),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: i == _page ? 18 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: i == _page ? C.primaryFill : C.line,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ],
     );
   }
 }
 
-/// Filter olahraga berbentuk lingkaran.
-class _SportCircles extends ConsumerWidget {
-  const _SportCircles({this.active});
+class _Promo {
+  const _Promo(
+    this.tag,
+    this.title,
+    this.subtitle,
+    this.icon,
+    this.colors,
+    this.foreground,
+    this.route,
+  );
 
-  final Sport? active;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final notifier = ref.read(filterProvider.notifier);
-    return SizedBox(
-      height: 84,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          _SportCircle(
-            label: 'Semua',
-            icon: Icons.grid_view_rounded,
-            color: C.primaryFill,
-            selected: active == null,
-            onTap: () => notifier.setSport(null),
-          ),
-          for (final s in Sport.values)
-            _SportCircle(
-              label: s.label,
-              icon: s.icon,
-              color: s.gradient.first,
-              selected: active == s,
-              onTap: () => notifier.setSport(active == s ? null : s),
-            ),
-        ],
-      ),
-    );
-  }
+  final String tag;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final List<Color> colors;
+  final Color foreground;
+  final String route;
 }
 
-class _SportCircle extends StatelessWidget {
-  const _SportCircle({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
+class _PromoCard extends StatelessWidget {
+  const _PromoCard({required this.promo, required this.onTap});
 
-  final String label;
-  final IconData icon;
-  final Color color;
-  final bool selected;
+  final _Promo promo;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: GestureDetector(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         onTap: onTap,
-        child: SizedBox(
-          width: 64,
-          child: Column(
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: selected ? color : C.surface,
-                  border: Border.all(
-                    color: selected ? color : C.line,
-                    width: selected ? 0 : 1,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              colors: promo.colors,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -14,
+                  bottom: -22,
+                  child: Icon(
+                    promo.icon,
+                    size: 132,
+                    color: promo.foreground.withValues(alpha: 0.12),
                   ),
-                  boxShadow: selected ? C.cardShadow : null,
                 ),
-                child: Icon(
-                  icon,
-                  size: 23,
-                  color: selected ? Colors.white : color,
+                Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: promo.foreground.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          promo.tag,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.9,
+                            color: promo.foreground,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        promo.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w800,
+                          height: 1.12,
+                          letterSpacing: -0.5,
+                          color: promo.foreground,
+                        ),
+                      ),
+                      const Spacer(),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              promo.subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: promo.foreground.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.arrow_forward,
+                            size: 16,
+                            color: promo.foreground,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  color: selected ? C.ink : C.muted,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -557,16 +473,67 @@ class _SportCircle extends StatelessWidget {
   }
 }
 
-/// Baris kota: pin, nama, jumlah room, aksi ubah.
+class _SportChips extends ConsumerWidget {
+  const _SportChips({this.active, required this.onSelect});
+
+  final Sport? active;
+  final ValueChanged<Sport?> onSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final items = <(String, Sport?)>[
+      ('Semua', null),
+      for (final sport in Sport.values) (sport.label, sport),
+    ];
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final (label, sport) = items[i];
+          final selected = sport == active;
+          return Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                onSelect(selected ? null : sport);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOut,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected ? C.primaryFill : C.surface,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: selected ? C.primaryFill : C.line),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? C.ink : C.muted,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _CityLine extends StatelessWidget {
-  const _CityLine({
-    required this.city,
-    required this.count,
-    required this.onTap,
-  });
+  const _CityLine({required this.city, required this.onTap});
 
   final String city;
-  final int count;
   final VoidCallback onTap;
 
   @override
@@ -574,67 +541,25 @@ class _CityLine extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
+      child: SizedBox(
         height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(
           children: [
-            const Icon(Icons.location_on_outlined, size: 18, color: C.primary),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                city,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: C.ink,
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                '· $count room',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: T.caption,
-              ),
-            ),
-            const SizedBox(width: 8),
+            const Icon(Icons.location_on_outlined, size: 16, color: C.primary),
+            const SizedBox(width: 5),
             Text(
-              'Ubah',
+              city,
               style: const TextStyle(
                 fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: C.primary,
+                fontWeight: FontWeight.w600,
+                color: C.ink,
               ),
             ),
+            const SizedBox(width: 3),
+            const Icon(Icons.expand_more, size: 16, color: C.faint),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _SportAvatar extends StatelessWidget {
-  const _SportAvatar({required this.sport});
-
-  final Sport sport;
-
-  @override
-  Widget build(BuildContext context) {
-    final tint = sport.gradient.first;
-    return Container(
-      width: 46,
-      height: 46,
-      decoration: BoxDecoration(
-        color: tint.withValues(alpha: 0.13),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      alignment: Alignment.center,
-      child: Icon(sport.icon, size: 22, color: tint),
     );
   }
 }

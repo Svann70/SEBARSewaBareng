@@ -9,6 +9,7 @@ import '../../data/state.dart';
 import 'venue_tabs.dart';
 
 /// Shell akun venue: akun terpisah dari pemain, dock sendiri.
+/// Pemilik menambah lapangan sekali; tab lain hanya untuk memantau.
 class VenueShell extends StatefulWidget {
   const VenueShell({super.key});
 
@@ -18,13 +19,12 @@ class VenueShell extends StatefulWidget {
 
 class _VenueShellState extends State<VenueShell> {
   int _index = 0;
-  final _visited = <int>{0};
 
   static const _pages = [
     _VenueHome(),
     VenueScheduleTab(),
     VenueScanTab(),
-    _VenueAccount(),
+    _VenueCourts(),
   ];
 
   @override
@@ -32,13 +32,16 @@ class _VenueShellState extends State<VenueShell> {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: IndexedStack(
-          index: _index,
+        child: Stack(
+          fit: StackFit.expand,
           children: [
+            // Struktur anak tetap (bug Flutter 3.41 semantics parentDataDirty
+            // saat tukar tipe/jumlah child runtime); toggle via Offstage.
             for (var i = 0; i < _pages.length; i++)
-              _visited.contains(i)
-                  ? RepaintBoundary(child: _pages[i])
-                  : const SizedBox.shrink(),
+              Offstage(
+                offstage: _index != i,
+                child: RepaintBoundary(child: _pages[i]),
+              ),
           ],
         ),
       ),
@@ -46,12 +49,95 @@ class _VenueShellState extends State<VenueShell> {
         index: _index,
         items: DockNav.venueDock,
         centerIcon: Icons.add,
-        centerLabel: 'Buka slot',
-        onSelect: (i) => setState(() {
-          _index = i;
-          _visited.add(i);
-        }),
-        onCreate: () => showAddSlotSheet(context),
+        centerLabel: 'Tambah lapangan',
+        onSelect: (i) => setState(() => _index = i),
+        onCreate: () => context.push('/venue/court/new'),
+      ),
+    );
+  }
+}
+
+/// Header nama venue, dipakai beranda dan tab lapangan.
+class _VenueTitle extends StatelessWidget {
+  const _VenueTitle({required this.venue});
+
+  final ApiVenue? venue;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = venue?.courts.where((c) => c.active).length ?? 0;
+    return Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: C.primarySoft,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Icon(
+            Icons.storefront_outlined,
+            size: 20,
+            color: C.primary,
+          ),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                venue?.name ?? 'Venue',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
+                  color: C.ink,
+                ),
+              ),
+              Text(
+                '${venue?.city ?? ''} · $active lapangan aktif',
+                style: T.small,
+              ),
+            ],
+          ),
+        ),
+        const Pill('Venue', background: C.primarySoft, color: C.primaryDeep),
+      ],
+    );
+  }
+}
+
+/// Ajakan untuk GOR yang belum punya lapangan aktif.
+class _SetupPrompt extends StatelessWidget {
+  const _SetupPrompt();
+
+  @override
+  Widget build(BuildContext context) {
+    return SurfaceCard(
+      radius: 18,
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.sports_score, size: 28, color: C.primary),
+          const SizedBox(height: 10),
+          const Text('Tambah lapangan dulu', style: T.h2),
+          const SizedBox(height: 6),
+          Text(
+            'Isi sekali: olahraga, kapasitas, harga per jam, dan jam buka. '
+            'Setelah itu pemain bisa langsung memesan, kamu tinggal memantau.',
+            style: T.small,
+          ),
+          const SizedBox(height: 14),
+          SebarButton(
+            label: 'Tambah lapangan',
+            icon: Icons.add,
+            onPressed: () => context.push('/venue/court/new'),
+          ),
+        ],
       ),
     );
   }
@@ -65,296 +151,155 @@ class _VenueHome extends ConsumerStatefulWidget {
 }
 
 class _VenueHomeState extends ConsumerState<_VenueHome> {
-  String _period = 'Pekan';
+  @override
+  void initState() {
+    super.initState();
+    // Shell venue membangun semua tab sekaligus; kalau refresh awal saat
+    // login gagal, beranda ikut memuat ulang dan memberi tahu pengguna.
+    Future.microtask(() {
+      final notifier = ref.read(venueSlotsProvider.notifier);
+      if (!notifier.hasVenue) {
+        notifier.refresh().then((error) {
+          if (!mounted || error == null) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Data venue gagal dimuat: $error')),
+          );
+        });
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final all = ref.watch(venueSlotsProvider);
-    final today = slotsOn(all, DateTime.now());
-    final booked = today
-        .where(
-          (s) => s.status == SlotStatus.booked || s.status == SlotStatus.lobby,
-        )
-        .length;
-    final open = today.where((s) => s.status == SlotStatus.open).length;
-    final courts = _courtStats(_period == 'Pekan' ? today : _rollup(all, 7));
+    final notifier = ref.read(venueSlotsProvider.notifier);
+    final venue = notifier.venue;
+    final hasActive = venue?.courts.any((c) => c.active) ?? false;
+    final today = wibToday();
+    final grid = ref.watch(venueDayProvider(today));
+    final bookings = [
+      for (final s in slotsOn(all, today))
+        if (s.status == SlotStatus.lobby || s.status == SlotStatus.booked) s,
+    ];
 
-    return ListView(
-      padding: kScreenPad,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: C.primarySoft,
-                borderRadius: BorderRadius.circular(14),
+    return RefreshIndicator(
+      onRefresh: notifier.refresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: kScreenPad,
+        children: [
+          _VenueTitle(venue: venue),
+          const SizedBox(height: 16),
+          if (notifier.isLoading && venue == null)
+            const Center(child: CircularProgressIndicator())
+          else if (venue == null && notifier.lastError != null)
+            // Gagal muat bukan berarti belum punya lapangan.
+            EmptyState(
+              icon: Icons.cloud_off,
+              title: 'Data venue gagal dimuat',
+              message: notifier.lastError!,
+              action: GhostButton(
+                label: 'Muat ulang',
+                icon: Icons.refresh,
+                onPressed: notifier.refresh,
               ),
-              child: const Icon(
-                Icons.storefront_outlined,
-                size: 20,
-                color: C.primary,
+            )
+          else if (!hasActive)
+            const _SetupPrompt()
+          else ...[
+            grid.when(
+              skipLoadingOnReload: true,
+              data: (courts) => _TodaySummary(courts: courts),
+              loading: () => const SizedBox(
+                height: 90,
+                child: Center(child: CircularProgressIndicator()),
               ),
+              error: (e, _) => Text(apiMessage(e), style: T.small),
             ),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          venueProfile.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.4,
-                            color: C.ink,
-                          ),
-                        ),
-                      ),
-                      if (venueProfile.verified) ...[
-                        const SizedBox(width: 5),
-                        const Icon(Icons.verified, size: 14, color: C.primary),
-                      ],
-                    ],
-                  ),
-                  Text(
-                    '${venueProfile.city} · ${venueProfile.courts} lapangan',
-                    style: T.small,
-                  ),
-                ],
-              ),
-            ),
-            const Pill(
-              'Venue',
-              background: C.primarySoft,
-              color: C.primaryDeep,
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        SportPanel(
-          gradient: C.primaryPanel,
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Pill(
-                'Pendapatan bulan ini',
-                color: Colors.white,
-                background: Colors.black.withValues(alpha: 0.2),
-              ),
-              const SizedBox(height: 10),
+            const SizedBox(height: 20),
+            SectionHeader('Pemesanan hari ini', action: '${bookings.length}'),
+            const SizedBox(height: 10),
+            if (bookings.isEmpty)
               Text(
-                rupiah(venueSummary.revenue),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: T.h1.copyWith(color: Colors.white),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 16,
-                runSpacing: 6,
-                children: [
-                  _HeroMeta(
-                    value: '${venueSummary.bookings}',
-                    label: 'Booking',
-                  ),
-                  _HeroMeta(
-                    value: '${(venueSummary.occupancy * 100).round()}%',
-                    label: 'Okupansi',
-                  ),
-                  _HeroMeta(value: '${venueProfile.rating}', label: 'Rating'),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _ActionTile(
-                icon: Icons.event_available,
-                label: 'Buka slot',
-                detail: '$open kosong hari ini',
-                tint: C.primary,
-                onTap: () => showAddSlotSheet(context),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _ActionTile(
-                icon: Icons.payments_outlined,
-                label: 'Cairkan',
-                detail: rupiah(venueProfile.payout),
-                tint: C.primary,
-                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Pencairan H+1 setelah check-in.'),
-                  ),
+                'Belum ada pemesanan hari ini. Pemain bisa memesan jam yang '
+                'masih kosong.',
+                style: T.small,
+              )
+            else
+              for (final s in bookings)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _BookingRow(slot: s),
                 ),
-              ),
-            ),
           ],
-        ),
-        const SizedBox(height: 20),
-        SectionHeader('Papan okupansi', action: _period, onTap: () {}),
-        const SizedBox(height: 10),
-        Segmented<String>(
-          options: const ['Pekan', 'Bulan'],
-          value: _period,
-          onChanged: (v) => setState(() => _period = v),
-        ),
-        const SizedBox(height: 12),
-        if (courts.isEmpty)
-          Text('Belum ada slot pada periode ini.', style: T.small)
-        else
-          for (var i = 0; i < courts.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: RankRow(
-                rank: i + 1,
-                title: 'Lapangan ${courts[i].court}',
-                subtitle: '${courts[i].taken} dari ${courts[i].total} slot',
-                value: '${courts[i].percent}%',
-                background: switch (i % 4) {
-                  0 => C.primarySoft,
-                  2 => C.amberSoft,
-                  3 => C.primarySoft,
-                  _ => C.surface,
-                },
-                avatars: courts[i].guests,
-              ),
-            ),
-        const SizedBox(height: 14),
-        SectionHeader(
-          'Jadwal hari ini',
-          action: '$booked terisi',
-          onTap: () {},
-        ),
-        const SizedBox(height: 10),
-        for (final s in today.take(4))
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _TodayRow(slot: s),
-          ),
-        if (today.isEmpty)
-          Text(
-            'Belum ada slot hari ini. Buka slot dari tombol +.',
-            style: T.small,
-          ),
-        const SizedBox(height: 14),
-        SurfaceCard(
-          radius: 18,
-          onTap: () => context.push('/venue/analytics'),
-          child: Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: C.mint,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.insights, size: 18, color: C.primary),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Analytics venue', style: T.h3),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Peak hours, tren pendapatan, okupansi.',
-                      style: T.small,
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right, size: 18, color: C.faint),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        SurfaceCard(
-          radius: 18,
-          child: Row(
-            children: [
-              const Icon(Icons.bolt, size: 17, color: C.amber),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  'Kuota penuh otomatis jadi booking. Tidak ada aksi manual.',
-                  style: T.small,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-class _CourtStat {
-  const _CourtStat({
-    required this.court,
-    required this.taken,
-    required this.total,
-    required this.guests,
-  });
+class _TodaySummary extends StatelessWidget {
+  const _TodaySummary({required this.courts});
 
-  final int court;
-  final int taken;
-  final int total;
-  final List<String> guests;
+  final List<CourtDay> courts;
 
-  int get percent => total == 0 ? 0 : (taken / total * 100).round();
-}
-
-List<VenueSlot> _rollup(List<VenueSlot> all, int days) {
-  final out = <VenueSlot>[];
-  for (var i = 0; i < days; i++) {
-    out.addAll(slotsOn(all, DateTime.now().add(Duration(days: i))));
-  }
-  return out;
-}
-
-List<_CourtStat> _courtStats(List<VenueSlot> slots) {
-  final byCourt = <int, List<VenueSlot>>{};
-  for (final s in slots) {
-    byCourt.putIfAbsent(s.court, () => []).add(s);
-  }
-  final stats = [
-    for (final entry in byCourt.entries)
-      _CourtStat(
-        court: entry.key,
-        taken: entry.value
-            .where(
-              (s) =>
-                  s.status == SlotStatus.booked || s.status == SlotStatus.lobby,
-            )
-            .length,
-        total: entry.value.length,
-        guests: [
-          for (final s in entry.value)
-            if (s.guest != null) s.guest!,
+  @override
+  Widget build(BuildContext context) {
+    final open = courts.fold<int>(0, (n, c) => n + c.hours.length);
+    final taken = courts.fold<int>(0, (n, c) => n + c.taken);
+    final income = courts.fold<int>(0, (n, c) => n + c.taken * c.rate);
+    return SportPanel(
+      gradient: C.primaryPanel,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Pill(
+            'Hari ini',
+            color: C.ink,
+            background: Colors.white.withValues(alpha: 0.5),
+          ),
+          const SizedBox(height: 10),
+          Text('$taken dari $open jam terisi', style: T.h1),
+          const SizedBox(height: 6),
+          Text(
+            'Perkiraan pemasukan ${rupiah(income)}',
+            style: const TextStyle(fontSize: 13, color: C.ink),
+          ),
+          const SizedBox(height: 10),
+          for (final c in courts)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      c.court.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: C.ink),
+                    ),
+                  ),
+                  Text(
+                    '${c.taken}/${c.hours.length} jam',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: C.ink,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
-  ]..sort((a, b) => b.percent.compareTo(a.percent));
-  return stats;
+    );
+  }
 }
 
-class _TodayRow extends StatelessWidget {
-  const _TodayRow({required this.slot});
+class _BookingRow extends StatelessWidget {
+  const _BookingRow({required this.slot});
 
   final VenueSlot slot;
 
@@ -374,7 +319,7 @@ class _TodayRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  formatTime(slot.start),
+                  formatTime(wib(slot.start)),
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
@@ -383,7 +328,7 @@ class _TodayRow extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  formatTime(slot.end),
+                  formatTime(wib(slot.end)),
                   style: const TextStyle(fontSize: 12, color: C.faint),
                 ),
               ],
@@ -396,7 +341,9 @@ class _TodayRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Lapangan ${slot.court}',
+                  slot.courtName ?? 'Lapangan',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -404,7 +351,7 @@ class _TodayRow extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  slot.guest ?? 'Belum terisi',
+                  slot.guest ?? 'Room aktif',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.small,
@@ -414,7 +361,7 @@ class _TodayRow extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Pill(
-            slot.status.label,
+            slot.status == SlotStatus.booked ? 'Terbooking' : 'Room berjalan',
             color: slot.status.color,
             background: slot.status.color.withValues(alpha: 0.16),
           ),
@@ -424,185 +371,39 @@ class _TodayRow extends StatelessWidget {
   }
 }
 
-class _HeroMeta extends StatelessWidget {
-  const _HeroMeta({required this.value, required this.label});
-
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: Colors.white,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ActionTile extends StatelessWidget {
-  const _ActionTile({
-    required this.icon,
-    required this.label,
-    required this.detail,
-    required this.tint,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final String detail;
-  final Color tint;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: C.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(13),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: tint.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(icon, size: 17, color: tint),
-              ),
-              const SizedBox(height: 9),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: C.ink,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                detail,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: C.faint),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _VenueAccount extends ConsumerWidget {
-  const _VenueAccount();
+/// Tab Lapangan: daftar lapangan; menu ⋮ tiap lapangan untuk on/off dan edit.
+class _VenueCourts extends ConsumerWidget {
+  const _VenueCourts();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(venueSlotsProvider);
+    final venue = ref.read(venueSlotsProvider.notifier).venue;
+    final courts = venue?.courts ?? const <ApiCourt>[];
     return ListView(
       padding: kScreenPad,
       children: [
-        const Text('Akun venue', style: T.h1),
-        const SizedBox(height: 4),
-        Text('Terpisah dari akun pemain.', style: T.small),
+        _VenueTitle(venue: venue),
+        if (venue != null && venue.address.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(venue.address, style: T.small),
+        ],
         const SizedBox(height: 16),
-        SportPanel(
-          gradient: C.amberPanel,
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Pill(
-                'Saldo pencairan',
-                color: Colors.white,
-                background: Colors.black.withValues(alpha: 0.2),
-              ),
-              const SizedBox(height: 9),
-              Text(
-                rupiah(venueProfile.payout),
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -1,
-                  height: 1,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Dicairkan tiap Senin · fee 5%',
-                style: TextStyle(fontSize: 12, color: Colors.white),
-              ),
-            ],
+        if (courts.isEmpty)
+          const _SetupPrompt()
+        else ...[
+          for (final c in courts)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _CourtSummary(court: c),
+            ),
+          const SizedBox(height: 4),
+          GhostButton(
+            label: 'Tambah lapangan',
+            icon: Icons.add,
+            onPressed: () => context.push('/venue/court/new'),
           ),
-        ),
-        const SizedBox(height: 16),
-        SurfaceCard(
-          radius: 18,
-          child: Column(
-            children: [
-              _AccountRow(
-                icon: Icons.badge_outlined,
-                label: 'Data venue',
-                value: '${venueProfile.courts} lapangan',
-              ),
-              const _AccountRow(
-                icon: Icons.schedule,
-                label: 'Jam operasional',
-                value: '06:00 – 22:00',
-              ),
-              const _AccountRow(
-                icon: Icons.account_balance_outlined,
-                label: 'Rekening pencairan',
-                value: 'BCA ···4821',
-              ),
-              const _AccountRow(
-                icon: Icons.percent,
-                label: 'Fee platform',
-                value: '5% per booking',
-                last: true,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        SurfaceCard(
-          radius: 18,
-          onTap: () => context.push('/venue/analytics'),
-          child: Row(
-            children: [
-              const Icon(Icons.insights, size: 17, color: C.primary),
-              const SizedBox(width: 10),
-              const Expanded(child: Text('Analytics venue', style: T.h3)),
-              const Icon(Icons.chevron_right, size: 18, color: C.faint),
-            ],
-          ),
-        ),
+        ],
         const SizedBox(height: 12),
         SurfaceCard(
           radius: 18,
@@ -612,7 +413,8 @@ class _VenueAccount extends ConsumerWidget {
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
-                  'Akun venue tidak bisa join room. Kelola lapangan dari sini.',
+                  'Lapangan nonaktif tidak tampil ke pemain dan tidak bisa '
+                  'dipesan. Akun venue tidak bisa join room.',
                   style: T.small,
                 ),
               ),
@@ -620,13 +422,13 @@ class _VenueAccount extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 18),
-        SebarButton(
-          label: 'Keluar ke akun pemain',
-          icon: Icons.swap_horiz,
-          color: C.primary,
-          onPressed: () {
-            ref.read(authProvider.notifier).logout();
-            context.go('/login');
+        GhostButton(
+          label: 'Keluar',
+          icon: Icons.logout,
+          color: C.danger,
+          onPressed: () async {
+            await ref.read(authProvider.notifier).signOut();
+            if (context.mounted) context.go('/login');
           },
         ),
       ],
@@ -634,43 +436,117 @@ class _VenueAccount extends ConsumerWidget {
   }
 }
 
-class _AccountRow extends StatelessWidget {
-  const _AccountRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.last = false,
-  });
+enum _CourtAction { toggle, edit }
 
-  final IconData icon;
-  final String label;
-  final String value;
-  final bool last;
+class _CourtSummary extends ConsumerWidget {
+  const _CourtSummary({required this.court});
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 11),
-      decoration: BoxDecoration(
-        border: last ? null : const Border(bottom: BorderSide(color: C.line)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 17, color: C.muted),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: C.ink,
-              ),
+  final ApiCourt court;
+
+  Future<void> _onAction(
+    BuildContext context,
+    WidgetRef ref,
+    _CourtAction a,
+  ) async {
+    switch (a) {
+      case _CourtAction.edit:
+        context.push('/venue/court/${court.id}');
+      case _CourtAction.toggle:
+        final on = !court.active;
+        final error = await ref
+            .read(venueSlotsProvider.notifier)
+            .setCourtActive(court, on);
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error ??
+                  (on
+                      ? '${court.name} aktif. Pemain bisa memesan.'
+                      : '${court.name} nonaktif. Tidak tampil ke pemain.'),
             ),
           ),
-          Text(value, style: const TextStyle(fontSize: 12, color: C.muted)),
-          const SizedBox(width: 4),
-          const Icon(Icons.chevron_right, size: 16, color: C.faint),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    String hh(int h) => '${h.toString().padLeft(2, '0')}:00';
+    final weekend = court.priceWeekend;
+    return SurfaceCard(
+      radius: 16,
+      padding: const EdgeInsets.fromLTRB(14, 8, 4, 14),
+      color: court.active ? null : C.surfaceAlt,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  court.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: T.h3,
+                ),
+              ),
+              Pill(
+                court.active ? 'Aktif' : 'Nonaktif',
+                color: court.active ? C.primaryDeep : C.muted,
+                background: court.active ? C.primarySoft : C.surface,
+              ),
+              PopupMenuButton<_CourtAction>(
+                tooltip: 'Menu ${court.name}',
+                icon: const Icon(Icons.more_vert, color: C.muted),
+                onSelected: (a) => _onAction(context, ref, a),
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: _CourtAction.toggle,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        court.active
+                            ? Icons.toggle_off_outlined
+                            : Icons.toggle_on_outlined,
+                      ),
+                      title: Text(court.active ? 'Nonaktifkan' : 'Aktifkan'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: _CourtAction.edit,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('Edit'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  [
+                    for (final s in court.allSports)
+                      '${s.sport.label} ${s.capacity}',
+                  ].join(' · '),
+                  style: T.small,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Sen–Jum ${rupiah(court.pricePerHour)}/jam'
+                  '${weekend == null ? '' : ' · Sab–Min ${rupiah(weekend)}/jam'}'
+                  ' · ${hh(court.openHour)}–${hh(court.closeHour)}',
+                  style: T.small,
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

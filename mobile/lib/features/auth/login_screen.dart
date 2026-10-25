@@ -7,7 +7,7 @@ import '../../core/widgets.dart';
 import '../../data/state.dart';
 
 /// Satu pintu masuk untuk pemain dan mitra venue — tidak ada pemilih peran,
-/// peran dibaca dari akun ([roleForEmail]) supaya tidak membingungkan.
+/// peran dibaca dari akun yang dipilih saat mendaftar supaya tidak membingungkan.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -16,8 +16,22 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _email = TextEditingController(text: 'raka@sebar.app');
-  final _password = TextEditingController(text: 'password123');
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final notice = ref.read(authProvider.notifier).takeSessionNotice();
+      if (notice != null && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(notice)));
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -26,7 +40,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_busy) return;
     if (_email.text.trim().isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -39,9 +54,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
       return;
     }
-    final role = roleForEmail(_email.text);
-    ref.read(authProvider.notifier).login(role);
-    context.go(role.home);
+    setState(() => _busy = true);
+    final error = await ref
+        .read(authProvider.notifier)
+        .signIn(_email.text, _password.text);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+    final role = ref.read(authProvider);
+    context.go(role?.home ?? '/home');
   }
 
   @override
@@ -88,7 +114,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            SebarButton(label: 'Masuk', onPressed: _submit),
+            SebarButton(
+              label: _busy ? 'Memproses…' : 'Masuk',
+              onPressed: _busy ? null : _submit,
+            ),
             const SizedBox(height: 14),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -124,8 +153,8 @@ class _RoleNote extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Kelola lapangan? Masuk dengan akun mitra (email berakhiran '
-              '@venue.sebar.app), otomatis dibawa ke dashboard venue.',
+              'Peran dibaca dari akunmu. Akun mitra venue langsung dibawa ke '
+              'dashboard venue setelah masuk.',
               style: T.small,
             ),
           ),
@@ -154,7 +183,7 @@ class BrandMark extends StatelessWidget {
             ),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Icon(Icons.sports_tennis, size: 21, color: Colors.white),
+          child: const Icon(Icons.sports_tennis, size: 21, color: C.ink),
         ),
         const SizedBox(width: 11),
         const Text(

@@ -1,0 +1,10 @@
+node_modules
+test
+.env*
+*.crt
+*.pem
+*.key
+*.md
+Dockerfile
+docker-compose.yml
+.dockerignore

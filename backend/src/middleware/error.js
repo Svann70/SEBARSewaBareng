@@ -36,6 +36,8 @@ export function errorHandler(err, req, res, _next) {
     e = dbError;
   } else if (err instanceof ZodError) {
     e = new AppError(422, 'VALIDATION_ERROR', 'Input tidak valid.', err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })));
+  } else if (err.type === 'entity.too.large') {
+    e = new AppError(413, 'PAYLOAD_TOO_LARGE', 'Data terlalu besar.');
   } else if (err.expose && err.status >= 400 && err.status < 500) {
     // body-parser errors (bad JSON, too large, unsupported encoding).
     e = new AppError(err.status, 'VALIDATION_ERROR', 'Body tidak valid.');

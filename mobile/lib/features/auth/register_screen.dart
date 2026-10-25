@@ -21,7 +21,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
+  final _venueName = TextEditingController();
+  final _venueAddress = TextEditingController();
+  final _venueCity = TextEditingController();
+  AccountRole _role = AccountRole.player;
   String? _error;
+  bool _busy = false;
 
   @override
   void dispose() {
@@ -29,10 +34,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _email.dispose();
     _password.dispose();
     _confirm.dispose();
+    _venueName.dispose();
+    _venueAddress.dispose();
+    _venueCity.dispose();
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_busy) return;
     final email = _email.text.trim();
     if (_name.text.trim().length < 3) {
       setState(() => _error = 'Nama minimal 3 karakter.');
@@ -50,13 +59,51 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       setState(() => _error = 'Konfirmasi password tidak sama.');
       return;
     }
-    setState(() => _error = null);
-    final role = roleForEmail(email);
-    ref.read(authProvider.notifier).login(role);
+    final role = _role;
+    if (role == AccountRole.venue) {
+      if (_venueName.text.trim().length < 3) {
+        setState(() => _error = 'Nama venue minimal 3 karakter.');
+        return;
+      }
+      if (_venueAddress.text.trim().length < 5) {
+        setState(() => _error = 'Alamat venue minimal 5 karakter.');
+        return;
+      }
+      if (_venueCity.text.trim().length < 2) {
+        setState(() => _error = 'Kota venue wajib diisi.');
+        return;
+      }
+    }
+    setState(() {
+      _error = null;
+      _busy = true;
+    });
+    final error = await ref
+        .read(authProvider.notifier)
+        .signUp(
+          email: email,
+          password: _password.text,
+          fullName: _name.text.trim(),
+          role: role,
+          venue: role == AccountRole.venue
+              ? {
+                  'name': _venueName.text.trim(),
+                  'address': _venueAddress.text.trim(),
+                  'city': _venueCity.text.trim(),
+                }
+              : null,
+        );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error != null) {
+      setState(() => _error = error);
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Akun ${_name.text.trim()} siap dipakai.')),
     );
-    context.go(role.home);
+    // Akun venue baru langsung ke form tambah lapangan (diisi sekali di awal).
+    context.go(role == AccountRole.venue ? '/venue/court/new' : role.home);
   }
 
   @override
@@ -75,6 +122,24 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               style: T.body,
             ),
             const SizedBox(height: 24),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Daftar sebagai', style: T.small),
+            ),
+            const SizedBox(height: 8),
+            Segmented<AccountRole>(
+              options: AccountRole.values,
+              value: _role,
+              labelOf: (role) =>
+                  role == AccountRole.player ? 'Pemain' : 'Mitra venue',
+              onChanged: (role) => setState(() => _role = role),
+            ),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(_role.hint, style: T.caption),
+            ),
+            const SizedBox(height: 14),
             LabeledField(
               label: 'Nama lengkap',
               controller: _name,
@@ -90,6 +155,32 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               keyboard: TextInputType.emailAddress,
               prefixIcon: Icons.alternate_email,
             ),
+            if (_role == AccountRole.venue) ...[
+              const SizedBox(height: 14),
+              LabeledField(
+                label: 'Nama venue',
+                controller: _venueName,
+                hint: 'Contoh: GOR C-Tra',
+                prefixIcon: Icons.storefront_outlined,
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 14),
+              LabeledField(
+                label: 'Alamat venue',
+                controller: _venueAddress,
+                hint: 'Jalan dan nomor',
+                prefixIcon: Icons.location_on_outlined,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 14),
+              LabeledField(
+                label: 'Kota',
+                controller: _venueCity,
+                hint: 'Contoh: Bandung',
+                prefixIcon: Icons.place_outlined,
+                textCapitalization: TextCapitalization.words,
+              ),
+            ],
             const SizedBox(height: 14),
             LabeledField(
               label: 'Password',
@@ -127,7 +218,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ),
             ],
             const SizedBox(height: 20),
-            SebarButton(label: 'Buat akun', onPressed: _submit),
+            SebarButton(
+              label: _busy ? 'Mendaftar…' : 'Buat akun',
+              onPressed: _busy ? null : _submit,
+            ),
             const SizedBox(height: 14),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,

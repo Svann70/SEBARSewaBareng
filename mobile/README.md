@@ -11,10 +11,37 @@ dan amber, angka besar, dock bawah dengan aksi utama di tengah).
 flutter pub get
 flutter run                 # Android/iOS
 flutter run -d chrome       # web (cek cepat)
-flutter test                # 19 tes
+flutter test                # 21 tes
 ```
 
 APK: `flutter build apk --debug` → `build/app/outputs/flutter-apk/`.
+
+## Backend
+
+Alamat API diambil dari `--dart-define=SEBAR_API_URL`; tanpa itu default
+`http://10.0.2.2:3000` di emulator Android dan `http://localhost:3000` di
+web/desktop (lihat `lib/data/api.dart`).
+
+```bash
+cd ../backend && npm run dev      # server di :3000
+cd ../mobile && flutter run --dart-define-from-file=env.json
+```
+
+`env.json` menyimpan `SEBAR_API_URL` (contoh: `http://192.168.1.10:3000`;
+lihat `env.json.example`). Untuk perangkat fisik: PC dan HP harus satu
+Wi-Fi, `usesCleartextTraffic` sudah diaktifkan di debug manifest, dan
+firewall Windows harus mengizinkan port 3000. Perubahan env perlu
+rebuild penuh (hot reload tidak memproses dart-define).
+
+- Token disimpan di memori `ApiClient`; 401 memicu satu kali refresh otomatis.
+  Sesi hilang saat app ditutup (belum ada secure storage).
+- Seed local tetap ada di provider `build()` sebagai isi sementara/offline;
+  `refresh()` menimpanya dengan data `/venues`, `/lobbies`, `/me/wallet`,
+  `/me/bookings`, `/venue/venues`, `/venue/slots`.
+- Konflik UI vs kontrak backend: room tanpa akses/sandi/kode undangan, tanpa
+  token QR + endpoint check-in (QR memakai `bookingCode`), tanpa chat, tanpa
+  analytics/pencairan venue, dan top up hanya jalan bila backend
+  `ALLOW_SANDBOX_TOPUP=1`.
 
 ## Layar
 
@@ -25,8 +52,8 @@ APK: `flutter build apk --debug` → `build/app/outputs/flutter-apk/`.
 | `/home` | Beranda pemain | Kolom cari, saldo, filter lingkaran olahraga, 5 room teratas + tautan ke semua room |
 | `/rooms` | Semua room | Daftar penuh dikelompokkan per tanggal, cari + filter olahraga/kota |
 | `/lobby/:id` | Detail room | Foto lapangan + header pekat, ringkasan tagihan bertumpuk |
-| - | Sheet join | Split bill, pilihan bayar (dompet / QRIS-transfer), sandi room, checkbox setuju |
-| `/create` | Buat room | Pilih venue + lapangan (bukan ketik manual), foto lapangan, harga ikut tarif venue/jam, akses publik/link/sandi |
+| - | Sheet join | Split bill, konfirmasi dana dompet terkunci, checkbox setuju |
+| `/create` | Buat room | Pilih venue + lapangan + slot dari server; harga & kuota ikut data lapangan |
 | `/community` | Komunitas | Chat 4 kanal, kirim pesan, waktu lokal |
 | `/ticket/:id` | Tiket QR | QR, kode booking, simulasi scan |
 | - | Dompet | Saldo tersedia/terkunci, riwayat mutasi, top up |
@@ -43,11 +70,11 @@ Pola sama seperti GoFood vs GoFood Merchant, tapi satu APK dan satu pintu masuk:
 - Peran menentukan beranda: `AccountRole.player.home` = `/home`,
   `AccountRole.venue.home` = `/venue`.
 - `DockNav` menerima daftar item, jadi dock venue berbeda: Beranda, Jadwal,
-  Scan, Akun. FAB tengah membuka sheet tambah slot.
+  Scan, Akun. FAB tengah membuka layar Kelola lapangan.
 - Akun venue tidak bisa join room pemain. Untuk pindah peran, keluar dulu
   lewat Akun venue atau Profil pemain.
-- Sesi disimpan di `authProvider` (in-memory). Saat API ada, ganti dengan
-  penyimpanan token; layar tidak berubah.
+- Peran yang dipakai UI datang dari respons `/auth/login` (`sessionProvider`),
+  bukan dari `roleForEmail` — fungsi itu hanya menebak peran saat mendaftar.
 
 ## Jadwal venue
 
@@ -55,27 +82,51 @@ Sumber data `venueSlotsProvider` di `lib/data/state.dart`:
 
 - Slot punya lapangan, jam, harga, dan status (`Kosong`, `Terisi`,
   `Room berjalan`, `Ditutup`).
-- `VenueSlotsNotifier.add()` menolak slot yang tumpang tindih di lapangan
-  yang sama — validasi UI sekarang, nanti pindah ke server.
-- Sheet tambah slot mengikuti tarif venue: weekday/weekend per jam × durasi
-  (1–3 jam), harga dihitung otomatis.
+- Harga ditentukan **per lapangan** dan **per hari**: harga weekday =
+  `courts.price_per_hour`, harga Sabtu–Minggu = `courts.price_weekend` (NULL =
+  sama dengan weekday; kirim API sebagai `priceWeekend`, migrasi supabase
+  `002_court_price_weekend.sql`). `ApiCourt.rateFor(start)` memilih tarif
+  sesuai hari; slot dihitung `tarif × durasi` saat dibuat; slot yang sudah
+  terbit menyimpan harganya sendiri, jadi simpan tarif tidak mengubah slot
+  lama.
+- `Tambah lapangan` memanggil `POST /venue/courts` (nama, olahraga, tarif
+  weekday/weekend, kapasitas) — perlu karena akun venue baru mendaftar tanpa
+  lapangan.
+- Satu akun venue bisa punya beberapa venue (`venues.owner_id`). Tab Jadwal
+  menampilkan chip venue saat akun punya lebih dari satu; `selectVenue`
+  memfilter slot tanpa request ulang.
 - Tab Jadwal: strip 7 hari, filter lapangan, ringkasan terisi/kosong/potensi,
-  daftar per lapangan. Tap slot membuka sheet tutup/buka dan ubah harga.
-- Slot `Terisi` terkunci; hanya slot kosong yang bisa ditutup.
+  daftar per lapangan. Tiap header lapangan punya tombol `Kelola` yang membuka
+  layar **Kelola lapangan** (`features/venue/venue_courts.dart`, rute
+  `/venue/courts`): foto hero + `Ganti foto utama`, strip galeri (pilih =
+  jadikan foto utama, `+` = tambah foto), nama, **Weekday/Weekend per jam**,
+  catatan sinkron ke room, tombol `Simpan perubahan`, dan daftar lapangan
+  lain (foto + `Belum ada foto` bila kosong). Tombol `+ Lapangan` di header
+  layar memanggil dialog tambah lapangan. Semua tombol tambah (header Jadwal
+  `Lapangan`, FAB dock `Kelola lapangan`, tile Beranda, dan `Kelola` per
+  header lapangan) membuka layar ini; sheet tambah slot per jam sudah
+  dihapus. Tap slot di Jadwal tetap membuka sheet tutup/buka dan ubah
+  harga slot.
+- Slot `Terisi` terkunci; hanya slot kosong yang bisa ditutup. Validasi
+  bentrok/watertight sekarang di server (unique + exclusion constraint).
+- Soliditas tab Jadwal: smoke `test/jadwal_smoke.dart` render tab di 360x740
+  (via dock dan langsung). Karena itu ditemukan dua bug dan sudah diperbaiki:
+  shell (`HomeShell` di `app.dart`, `VenueShell` di `venue_shell.dart`) tidak
+  lagi memakai `IndexedStack` yang mengganti child saat runtime — pola baru
+  `Stack(fit: StackFit.expand)` + child permanen dibungkus `Offstage` +
+  `RepaintBoundary`, karena Flutter 3.41 mogok menyematkan semantik saat tree
+  child `IndexedStack` diganti. `GhostButton` (core/widgets.dart) diberi
+  `mainAxisSize: MainAxisSize.min` supaya bisa dipakai sebagai child tidak-flex
+  di `Row` (kasus: tombol `Tambah` dan `Ganti foto`); header lapangan kini
+  mem-flex judul dengan ellipsis, jadi tak overflow di lebar sempit.
 
 
 ## Akses room
 
-Tiga mode, dipilih saat membuat room:
-
-- `Publik` - tampil di daftar `/home`, siapa saja bisa join.
-- `Via link` - tidak tampil di daftar. Join lewat kode undangan
-  (`VOLI-SORE`) yang dibagikan host.
-- `Pakai sandi` - tetap tampil di daftar, tapi join butuh sandi.
-
-Aturan ada di `LobbyAccess` + `LobbiesNotifier.join()` di
-`lib/data/state.dart`, jadi saat API masuk validasi pindah ke server tanpa
-mengubah layar.
+Backend hanya punya room publik: tidak ada akses link/sandi dan tidak ada
+kode undangan. Enum `LobbyAccess` + `lobbyByInviteCode()` masih ada di
+`lib/data/state.dart` untuk seed/offline dan tes, tetapi layar tidak lagi
+menawarkannya. Tambahkan kembali saat backend punya kolomnya.
 
 ## Ikon
 
@@ -94,72 +145,67 @@ lib/
 └── features/{auth(login,register),home,rooms,lobby,create,booking,wallet,profile,community,venue}/
 ```
 
-State masih in-memory (seed §17.3). Saat API disambungkan: ganti isi
-`data/state.dart` dengan repository + Dio, UI tidak berubah karena angka uang
-sudah dibaca dari state, bukan dihitung di widget.
+State di `data/state.dart` menyimpan seed lalu ditimpa data server; klien HTTP
+tipis ada di `data/api.dart`. UI tidak berubah karena angka uang dibaca dari
+state, bukan dihitung di widget.
 
 ## Warna
 
-Satu warna utama, satu aksen, sisanya netral — supaya mata tidak lelah dan
-layar tidak ramai:
+Palet desain **"Hijau"** (`DesignReference/SEBAR Mobile — Hijau.html`):
 
-- **Hijau `#00A27D`** (`C.primaryFill`, #00A27D): aksi, uang, status positif.
-  Teks hijau di atas krem memakai `C.primary` `#00664F` (kontras 5,7:1);
-  kanvas krem `#EDE8D0`, kartu `#FAF7EA`, teks ink `#1B2B26`.
-- **Amber `#F1C338`** (`C.amberFill`): peringatan, denda, hal yang perlu
-  ditunda. Teks amber di atas krem memakai `C.amber` `#7A5A0A` (5,2:1).
-- **Merah `#A5243C`** (`C.danger`): hanya untuk aksi merusak dan tidak-datang,
-  teks/ikon kecil saja. Bukan warna brand.
-- Panel pekat (`C.primaryPanel`, `C.inkPanel`, `C.amberPanel`) memakai teks
-  putih, rasio ≥ 4,5:1 untuk teks kecil; blok terang untuk teks ink.
-- Warna terang (`primaryFill`, `amberFill`) tidak pernah dipakai sebagai
-  latar teks putih/kecil — putih di `#00A27D` cuma 3,3:1, di `#F1C338` 1,9:1.
-- Aturan pemakaian: maksimal satu bidang berwarna besar per layar, cabang
-  olahraga dibedakan lewat ikon + label (bukan warna), dan warna tidak pernah
-  jadi satu-satunya penanda status.
+- Latar `#FDFDFC`, kanvas `#FAF9F5`, garis/panel `#D9E0E2`, tinta `#10231A`.
+- **Tombol utama `#04BF62`** (`C.primaryFill`), header/terisi `#3EC381`,
+  centang/grafik `#0CA458`, teks hijau `#087A41` (`C.primary`, 5,4:1 di putih).
+- Bidang terpilih `#E3F6EC` (`C.primarySoft`). Denda `#8A5300` +
+  `#FFF1D6`; bahaya/no-show `#B3261E` + `#FCE8E6`. Kuning/merah hanya untuk
+  status uang.
+- Hijau terang tidak pernah jadi latar teks putih kecil (2:1). **Teks di atas
+  hijau selalu tinta gelap** (6,6–7:1), termasuk panel `primaryPanel`.
+- Warna tidak menjadi satu-satunya penanda status; selalu ada ikon/label.
 
 ## Bahasa visual
 
-Diambil dari referensi:
+- **Kartu datar bergaris tipis** (`SurfaceCard`, `SportPanel`): radius 12,
+  tanpa bayangan, tanpa potongan diagonal.
+- **Kartu room gaya absen patungan** (`RoomCard`): label olahraga · akses,
+  judul, jadwal, venue · lapangan, harga per orang, avatar + sisa slot.
+- **Daftar absen bernomor** (`AttendRow`): nomor, nama, tag `host`/`kamu`,
+  baris kosong bergaris putus berisi harga per orang.
+- **Tiket** (`TicketTile`, `TicketScreen`): blok tanggal, judul, jadwal,
+  kode QR besar; tab `Siap dipakai / Menunggu / Selesai`.
+- **Dock bawah datar**: 4 tujuan + pil tengah `Buat room` (pemain) /
+  `Kelola lapangan` (venue, membuka `/venue/courts`), hijau `#00A27D`
+  dengan teks tinta.
+- **Skala tipografi** `T`: 12 label, 12 caption, 13 small, 14 body,
+  16 h2, 24 h1, 28 display, 32 metrik. Tidak ada teks di bawah 12px.
+- **Foto lapangan dikelola venue** (`CourtPhoto` + `courtPhotosProvider`,
+  galeri di `courtGalleriesProvider`), bisa diganti dari layar Kelola lapangan
+  (`/venue/courts`): foto hero, strip galeri (pilih = foto utama, `+` = tambah
+  prasetel/tautan), dan di pill `Ganti foto` pada sheet detail slot. Foto sama
+  dipakai room pemain karena membaca kunci `courtPhotoKey` yang sama.
+  Fallback hijau + ikon bila gagal muat.
+- **Teks pengguna tanpa istilah internal**: kode ledger dipetakan ke label
+  manusia (`WalletEntryX.typeLabel`), pesan scan memakai kalimat biasa.
 
-- **Panel pekat dengan potongan diagonal** (`SportPanel`) — hijau untuk uang
-  dan CTA, netral gelap untuk header informasi, amber untuk konteks denda.
-- **Angka besar sebagai fokus** (saldo, harga per orang, omzet) di panel
-  paling atas tiap layar.
-- **Dock bawah mengambang**: kapsul krem, 2 tujuan kiri, 2 kanan, tombol
-  tengah berbentuk pil dengan ikon + teks (`Buat room` pemain, `Buka slot`
-  venue) supaya aksinya jelas tanpa menebak ikon. Semua layar memakai
-  `kScreenPad` (bawah 112) agar baris terakhir tidak tertutup dock + FAB.
-- **Skala tipografi**: 11 ukuran saja (12, 13, 15, 15.5, 18, 20, 24, 26, 32,
-  34, 40) lewat token `T`; tidak ada teks di bawah 12px.
-- **Card hitung + baris peringkat** (`CountCard`, `RankRow`) untuk statistik
-  dan papan okupansi; `StatRing` (cincin progres) dipakai di Profil supaya
-  angka main/check-in/no-show punya konteks, bukan cuma angka.
-- **Foto lapangan dikelola venue** (`CourtPhoto` + `courtPhotosProvider`).
-  Venue menekan `Ganti foto` di detail slot dan memilih foto bawaan atau
-  menempel tautan; kunci fotonya `venue|lapangan` sehingga room yang memakai
-  lapangan itu ikut berubah seketika. Gagal muat → gradien brand + ikon, jadi
-  tata letak tetap utuh.
-- **Detail room**: header berfoto dengan lapisan gelap pengaman, kartu
-  ringkasan bertumpuk dengan cincin kuota di tengah, lalu Detail / Lokasi /
-  Peserta.
-- **Teks pengguna tanpa istilah internal**: kode ledger (TOPUP/CAPTURE)
-  dipetakan ke label manusia (`WalletEntryX.typeLabel`), pesan scan memakai
-  kalimat biasa.
+Catatan: font desain Rubik belum dibundel (tidak ada aset font); aplikasi
+memakai font sistem. Tambahkan `assets/fonts/Rubik*.ttf` + `pubspec.yaml`
+bila ingin persis.
 
 ## Pembayaran & pembatalan
 
-- Sheet join punya dua opsi: **saldo dompet** (langsung dikunci) atau
-  **QRIS/transfer bank** (di luar dompet, instruksi menyusul, slot aman
-  15 menit). `LobbiesNotifier.join(..., useWallet: false)` tidak menyentuh
-  saldo.
-- Pembatalan dua zona: batal **≥ 6 jam** refund penuh, batal **< 6 jam**
-  denda **15%** (refund 85%), tidak datang dana hangus. Aturan tampil sebelum
-  user setuju.
+- Join memakai saldo dompet: dana dikunci (`HOLD`) saat join dan dikonversi
+  jadi pembayaran saat kuota penuh. `join(useWallet:)` menyediakan jalur
+  QRIS/transfer untuk UI berikutnya; serverannya belum ada.
+- Pembatalan: batal **≥ 6 jam** refund penuh, **< 6 jam** slot terkunci (tidak
+  bisa keluar), tidak datang dana hangus. Aturan tampil sebelum user setuju.
 
 ## Tes
 
 - `test/money_test.dart` - T-01 split bill (ceil + surplus), T-02 denda 15% < 6 jam
 - `test/access_test.dart` - akses room, kode undangan, peran akun mitra
 - `test/screens_test.dart` - smoke semua layar di 360x740 tanpa overflow
+- `test/jadwal_smoke.dart` - smoke tab Jadwal via dock + standalone, 360x740
+  (menangkap overflow RenderFlex; lihat "Jadwal venue")
+- `test/court_rate_test.dart` - T-07 `ApiCourt.rateFor`: weekend Sabtu/Minggu,
+  fallback ke harga weekday
 - `test/lobby_detail_test.dart`, `test/widget_test.dart` - render dasar

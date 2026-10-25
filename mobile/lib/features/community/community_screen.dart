@@ -123,7 +123,7 @@ class _ChannelChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? C.primary : C.surface,
+      color: selected ? C.primaryFill : C.surface,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -133,14 +133,14 @@ class _ChannelChip extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: selected ? C.primary : C.line),
+            border: Border.all(color: selected ? C.primaryFill : C.line),
           ),
           child: Text(
             label,
             style: TextStyle(
               fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: selected ? Colors.white : C.ink,
+              fontWeight: FontWeight.w600,
+              color: C.ink,
             ),
           ),
         ),
@@ -204,7 +204,7 @@ class _Message extends StatelessWidget {
                   fontSize: 13,
                   height: 1.45,
                   fontWeight: FontWeight.w500,
-                  color: mine ? Colors.white : C.ink,
+                  color: C.ink,
                 ),
               ),
             ),
@@ -278,7 +278,7 @@ class _Composer extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Material(
-              color: C.primary,
+              color: C.primaryFill,
               shape: const CircleBorder(),
               child: InkWell(
                 customBorder: const CircleBorder(),
@@ -286,11 +286,7 @@ class _Composer extends StatelessWidget {
                 child: const SizedBox(
                   width: 46,
                   height: 46,
-                  child: Icon(
-                    Icons.arrow_upward,
-                    size: 20,
-                    color: Colors.white,
-                  ),
+                  child: Icon(Icons.arrow_upward, size: 20, color: C.ink),
                 ),
               ),
             ),

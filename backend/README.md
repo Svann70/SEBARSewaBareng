@@ -1,7 +1,9 @@
 # SEBAR API (v1)
 
 Node.js 22 + Express 5, plain JavaScript (ESM). Database: Supabase Postgres via `pg` (raw SQL).
-Belum dihubungkan ke `mobile/`.
+Sudah dihubungkan ke `mobile/` (klien HTTP `mobile/lib/data/api.dart`, alamat
+lewat `--dart-define=SEBAR_API_URL`, default `http://10.0.2.2:3000` di
+emulator Android / `http://localhost:3000` di web-desktop).
 
 Aturan uang dan kuota dijalankan **di database Supabase** (trigger + function PL/pgSQL, SDD §4.6).
 Backend ini lapisan tipis: validasi input, cek kepemilikan, kunci baris, lalu memicu trigger/function.
@@ -18,13 +20,16 @@ Error `RAISE EXCEPTION 'SEBAR::<KODE>'` dari DB dipetakan ke HTTP di `src/middle
 
 ## Setup
 
-Skema database **tidak** dikelola repo ini: tabel sudah ada di Supabase. Tidak ada migrasi.
+Seluruh skema ada di migrasi Drizzle `drizzle/` dan dijalankan dengan `npm run db:migrate` (tercatat
+di `drizzle.__drizzle_migrations`, yang sudah jalan dilewati). `0000_baseline` = skema dasar (enum,
+tabel, function/trigger aturan uang, view, RLS); semua migrasi idempoten, jadi aman juga untuk
+Supabase yang skemanya sudah ada. Skema untuk query: `db/schema/` (satu file per tabel, enum di `enums.js`).
 
 ```bash
 cd backend
 npm install
 cp .env.example .env      # isi DATABASE_URL, DATABASE_SSL_CA, JWT_SECRET
-npm run dev               # http://localhost:3000/healthz
+npm run dev               # http://localhost:3000/health
 ```
 
 Supabase:
@@ -33,8 +38,58 @@ Supabase:
    Tanpa CA, server menolak start bila host DB bukan localhost.
 3. Pastikan RLS aktif di semua tabel (Data API/anon key tidak boleh akses langsung); backend memakai koneksi owner.
 
-Sekali saja: jalankan `db/supabase/001_refresh_tokens.sql` di Supabase SQL Editor (tabel `refresh_tokens`).
-Tanpa tabel ini, register/login gagal.
+Migrasi (`npm run db:migrate`, aman diulang; file yang dulu dijalankan manual di SQL Editor
+juga aman karena semuanya idempoten):
+- `0001_refresh_tokens` (tabel `refresh_tokens`). Tanpa ini, register/login gagal.
+- `0002_court_price_weekend` (kolom `courts.price_weekend`, harga Sabtu–Minggu).
+- `0003_court_setup` (jam buka–tutup, lapangan serbaguna `court_sports`, olahraga Basket/Tenis/Padel,
+  kolom `court_slots.released`). Tanpa 0002 + 0003, katalog venue, buat room, dan seed gagal.
+
+### Menambah / mengubah tabel (Drizzle)
+
+`db/schema/` berisi **semua** 16 tabel lengkap dengan index, check, dan foreign key (hasil
+`drizzle-kit pull`), satu file per tabel (mis. `court-slots.js`). Isinya harus sama persis dengan database: Drizzle membuat SQL
+dari selisih `db/schema/` vs `drizzle/meta`, jadi kalau ada yang dihapus dari `db/schema/`, migrasi
+berikutnya akan ikut menghapusnya dari database. Untuk tabel baru cukup tulis beberapa baris:
+
+1. Buat file baru `db/schema/court-photos.js` (contoh: foto lapangan):
+   ```js
+   import { pgTable, uuid, text, smallint, timestamp } from "drizzle-orm/pg-core";
+   import { courts } from "./courts.js";
+
+   export const courtPhotos = pgTable("court_photos", {
+   	id: uuid().defaultRandom().primaryKey(),
+   	courtId: uuid("court_id").notNull().references(() => courts.id, { onDelete: "cascade" }),
+   	url: text().notNull(),
+   	sort: smallint().default(0).notNull(),
+   	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+   }).enableRLS();
+   ```
+   lalu tambahkan `export * from "./court-photos.js";` di `db/schema/index.js`.
+   Selalu `.enableRLS()`: Data API/anon key Supabase tidak boleh membaca tabel langsung.
+2. `npm run db:generate -- --name=court_photos` → file baru `drizzle/0004_court_photos.sql` + `drizzle/meta/`.
+3. **Baca SQL-nya.** Harus hanya berisi perubahan yang dimaksud (di contoh: `CREATE TABLE`, `ENABLE ROW
+   LEVEL SECURITY`, foreign key). Ada `DROP` yang tidak diminta? Berhenti, cek `db/schema/`.
+4. `npm run db:migrate` ke database lokal, lalu `npm test` (tes juga menjalankan migrasi).
+5. Commit `db/schema/` + `drizzle/0004_*.sql` + `drizzle/meta/` dalam satu PR.
+6. Setelah PR masuk `main`: `npm run db:migrate` dengan `.env` Supabase.
+
+Mengubah kolom sama caranya: ubah definisinya di `db/schema/`, lalu langkah 2–6. Trigger, function, view,
+atau constraint khusus (mis. `EXCLUDE`) tidak ditulis di `db/schema/`: `npx drizzle-kit generate --custom
+--name=<nama>` lalu tulis SQL-nya sendiri di file yang dibuat (buat idempoten: `IF NOT EXISTS`,
+`OR REPLACE`). **Jangan pakai `drizzle-kit push`**: Drizzle tidak mengenal trigger, function, `EXCLUDE`
+anti tumpang tindih, dan RLS di database ini, jadi `push` bisa menghapusnya.
+
+Setup lapangan sekali di awal: semua jam di dalam jam buka bisa disewa tanpa pemilik membuka slot.
+Room selalu memakai tarif lapangan (weekday/weekend × durasi). Slot `OPEN` tanpa room aktif hanya
+penanda jam kosong: saat jamnya dipesan, slot itu dihapus (atau `released` bila masih dirujuk room
+lama yang batal/kedaluwarsa). Pemilik menutup jam lewat `POST /venue/slots` dengan `status: BLOCKED`.
+
+Foto lapangan: bucket **publik** di Supabase Storage (`SUPABASE_PHOTO_BUCKET`, default `courts-photos`).
+App mengunggah lewat backend (cek pemilik, jenis, ukuran); backend menulis ke Storage dengan
+`SUPABASE_SERVICE_ROLE_KEY`. Data lapangan (`courts[].photos`) dan room (`court.photoUrl` = foto sampul)
+membawa URL publiknya. Hapus foto = hapus baris + berkasnya. Belum ada endpoint hapus lapangan; kalau nanti
+ditambah, hapus juga berkas `courts/<courtId>/` di bucket (FK cascade hanya menghapus baris DB).
 
 Flag `.env`:
 - `AUTH_RATE_LIMIT` (20/menit/IP untuk register/login, 5× itu untuk refresh/logout) dan `LOGIN_RATE_LIMIT`
@@ -69,12 +124,11 @@ Tiap modul: `*.routes.js` (path → handler), `*.controller.js` (validasi input,
 
 ## Tes
 
-Tes integrasi butuh Postgres sekali pakai, **bukan** Supabase. `test/fixtures/schema.sql` = hasil
-`pg_dump --schema-only` dari Supabase (tabel, trigger, function); ambil ulang bila skema Supabase berubah.
+Tes integrasi butuh Postgres sekali pakai, **bukan** Supabase. Database boleh kosong: tes menjalankan
+migrasi `drizzle/` sendiri sebelum mulai.
 
 ```bash
 docker run -d --name sebar-test-pg -e POSTGRES_PASSWORD=test -e POSTGRES_DB=sebar_test -p 127.0.0.1:55432:5432 postgres:17-alpine
-psql postgresql://postgres:test@127.0.0.1:55432/sebar_test -f test/fixtures/schema.sql
 echo 'TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:55432/sebar_test' > .env.test
 npm test
 ```
@@ -90,33 +144,45 @@ Belum (v2, lihat SDD): endpoint QR check-in (baris `checkins` sudah dibuat DB), 
 
 ## API
 
-Semua kecuali `/auth/*` dan `/healthz` butuh `Authorization: Bearer <token>`.
+Semua kecuali `/auth/*` dan `/health` butuh `Authorization: Bearer <token>`.
 Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM-DD`).
 
 | Method | Path | Peran | Body / Query | Sukses | Error utama |
 |---|---|---|---|---|---|
-| GET | `/healthz` | - | - | 200 | |
+| GET | `/health` | - | - | 200 | |
 | POST | `/auth/register` | - | email, password (≥8), fullName, phone?, role? (`PLAYER`/`VENUE_ADMIN`), venue? (wajib untuk `VENUE_ADMIN`: name, address, city, description?) | 201 token + `user` | 409, 422 |
 | POST | `/auth/login` | - | email, password, role? (tab yang dipilih di app) | 200 token + `user` | 401, 403 `WRONG_ACCOUNT_TYPE` |
 | POST | `/auth/refresh` | - | refreshToken | 200 token baru (refresh token lama tidak berlaku lagi) | 401 |
 | POST | `/auth/logout` | - | refreshToken | 204 | |
 | GET | `/me` | semua | - | 200 profil + skor | 401 |
+| PATCH | `/me` | semua | fullName?, phone? (null = hapus; minimal satu field) | 200 profil baru | 401, 409 nomor telepon dipakai, 422 |
+| POST | `/me/password` | semua | currentPassword, newPassword (≥8, ≠ lama) | 204 (semua refresh token dicabut, semua perangkat wajib login ulang) | 401 password saat ini salah, 422 |
 | GET | `/me/wallet` | semua | - | 200 `{balance, held, available}` | |
 | POST | `/me/wallet/topup` | semua | amount (10.000–10.000.000), header `Idempotency-Key` | 201 entri ledger (200 bila key diulang) | 422, 422 `IDEMPOTENCY_KEY_REUSED`, 403 bila sandbox mati |
 | GET | `/me/wallet/ledger` | semua | page | 200 `{items, page}` | |
 | GET | `/me/bookings` | semua | - | 200 `{items}` | |
 | GET | `/venues` | semua | city?, sport? | 200 `{items}` + courts | |
 | GET | `/venues/:id/slots` | semua | date | 200 `{items}` | 422 |
+| GET | `/venues/:id/availability` | semua | date | 200 `{date, weekend, courts[]}`; tiap court + `rate` (harga/jam hari itu) + `hours[] {hour, start, status}` dengan status `FREE`/`TAKEN`/`CLOSED`/`PAST` | 422 |
 | GET | `/lobbies` | semua | city?, sport?, date?, minScore?, page? | 200 `{items, page}` | |
-| POST | `/lobbies` | PLAYER | slotId, title, quota (2–30), minReliability? | 201 lobby (host ikut + hold) | 409 slot sudah ada lobby / `SLOT_NOT_OPEN` / >3 lobby aktif, 409 saldo, 422 |
+| POST | `/lobbies` | PLAYER | title, quota (2–30), minReliability?, **dan** slotId **atau** courtId + startAt (awal jam) + hours (1–3) + sport? | 201 lobby (host ikut + hold). Mode courtId: slot dibuat otomatis, harga = tarif weekday/weekend × hours | 409 jam terisi/ditutup (`SLOT_NOT_OPEN`) / >3 lobby aktif, 409 saldo, 422 di luar jam buka / kuota > kapasitas olahraga / olahraga tidak ada di lapangan |
 | GET | `/lobbies/:id` | semua | - | 200 lobby + members | 404 |
 | POST | `/lobbies/:id/join` | PLAYER | - | 201 `{member, booking}` (200 bila sudah join; `booking` terisi bila lobby penuh) | 409 `LOBBY_FULL`, 409 `INSUFFICIENT_AVAILABLE_BALANCE`, 409 `ALREADY_JOINED` (pernah keluar), 403 `SCORE_TOO_LOW`, 410 `DEADLINE_PASSED` |
 | DELETE | `/lobbies/:id/members/me` | semua | - | 200 `{released}` | 409 sudah confirm / host, 410 |
 | DELETE | `/lobbies/:id` | host | - | 200 `{refundedMembers}` | 403, 409, 410 lewat deadline |
 | GET | `/venue/venues` | VENUE_ADMIN | - | 200 venue + courts milik sendiri | 403 |
-| GET | `/venue/slots` | VENUE_ADMIN | date | 200 `{items}` | 403 |
-| POST | `/venue/slots` | VENUE_ADMIN | courtId, startAt, endAt, price | 201 slot | 409 bentrok, 404 bukan milik |
+| POST | `/venue/venues` | VENUE_ADMIN | name (3–120), address (5–300), city (2–60), description? | 201 venue (untuk akun yang belum punya venue) | 403, 422 |
+| PATCH | `/venue/venues/:id` | VENUE_ADMIN | name?, address?, city?, description? (minimal satu) | 200 venue | 404 bukan milik, 422 |
+| POST | `/venue/courts` | VENUE_ADMIN | venueId, name, sports `[{sport, capacity}]` (atau sport + capacity), pricePerHour (weekday), priceWeekend?, openTime? (`HH:00`, default 06:00), closeTime? (`HH:00`, ≤ 24:00, default 22:00). sport: `BADMINTON`/`FUTSAL`/`VOLLEY`/`MINISOCCER`/`BASKETBALL`/`TENNIS`/`PADEL` | 201 court | 404 venue bukan milik, 409 nama dobel, 422 |
+| PATCH | `/venue/courts/:id` | VENUE_ADMIN | name?, sports? (ganti semua), pricePerHour?, priceWeekend?, capacity?, openTime?, closeTime?, status? (`ACTIVE`/`MAINTENANCE`) | 200 court | 404 bukan milik, 422 jam tutup ≤ jam buka |
+| POST | `/venue/courts/:id/photos` | VENUE_ADMIN | body = berkas foto (JPG/PNG/WEBP, ≤ 5 MB; jenis dicek dari isi berkas). Maks 6 per lapangan | 201 `{id, url, sort}` (url publik Supabase Storage) | 404 bukan milik, 409 sudah 6, 413, 415, 502 storage, 503 storage belum diatur |
+| DELETE | `/venue/courts/:id/photos/:photoId` | VENUE_ADMIN | - | 204 (berkas juga dihapus dari Storage) | 404 |
+| GET | `/venue/slots` | VENUE_ADMIN | date, venueId? | 200 `{items}` | 403 |
+| POST | `/venue/slots` | VENUE_ADMIN | courtId, startAt, endAt, price, status? (`OPEN`/`BLOCKED`; `BLOCKED` = tutup jam itu) | 201 slot | 409 bentrok, 404 bukan milik |
 | PATCH | `/venue/slots/:id` | VENUE_ADMIN | status? (`OPEN`/`BLOCKED`), price? | 200 slot | 409 sudah ada lobby/booking |
+
+Rencana perubahan DB + endpoint untuk desain baru ada di `DESIGN_CHANGES.md`.
+Khusus alur **Buat room** (wizard 3 langkah) ada di `CREATE_ROOM_CHANGES.md`.
 
 Respons token (register, login, refresh):
 
