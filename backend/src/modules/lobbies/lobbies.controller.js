@@ -7,7 +7,7 @@ function lobbyDto(r) {
     title: r.title,
     hostId: r.host_id,
     venue: { id: r.venue_id, name: r.venue_name, city: r.city },
-    court: { name: r.court_name, sport: r.sport_type },
+    court: { name: r.court_name, sport: r.sport_type, photoUrl: r.court_photo ?? null },
     slot: { id: r.slot_id, startAt: r.start_at, endAt: r.end_at },
     priceTotal: r.price_total,
     quota: r.quota,

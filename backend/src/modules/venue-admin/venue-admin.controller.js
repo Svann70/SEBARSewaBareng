@@ -3,6 +3,8 @@ import {
   createCourtSchema,
   createSlotSchema,
   createVenueSchema,
+  patchVenueSchema,
+  photoParamsSchema,
   idSchema,
   patchCourtSchema,
   patchSlotSchema,
@@ -18,6 +20,11 @@ export async function createVenue(req, res) {
   res.status(201).json(await service.createVenue(req.user.id, createVenueSchema.parse(req.body)));
 }
 
+export async function updateVenue(req, res) {
+  const { id } = idSchema.parse(req.params);
+  res.json(await service.updateVenue(req.user.id, id, patchVenueSchema.parse(req.body)));
+}
+
 export async function createCourt(req, res) {
   res.status(201).json(await service.createCourt(req.user.id, createCourtSchema.parse(req.body)));
 }
@@ -25,6 +32,17 @@ export async function createCourt(req, res) {
 export async function updateCourt(req, res) {
   const { id } = idSchema.parse(req.params);
   res.json(await service.updateCourt(req.user.id, id, patchCourtSchema.parse(req.body)));
+}
+
+export async function addPhoto(req, res) {
+  const { id } = idSchema.parse(req.params);
+  res.status(201).json(await service.addPhoto(req.user.id, id, req.body));
+}
+
+export async function deletePhoto(req, res) {
+  const { id, photoId } = photoParamsSchema.parse(req.params);
+  await service.deletePhoto(req.user.id, id, photoId);
+  res.status(204).end();
 }
 
 export async function listSlots(req, res) {

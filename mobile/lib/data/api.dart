@@ -263,6 +263,10 @@ class ApiClient {
 
   Future<dynamic> delete(String path) => _send('DELETE', path);
 
+  /// Kirim berkas mentah (foto). Jenis berkas dicek server dari isinya.
+  Future<dynamic> postBytes(String path, List<int> bytes, String contentType) =>
+      _send('POST', path, bytes: bytes, headers: {'Content-Type': contentType});
+
   Future<dynamic> topup(int amount, String idempotencyKey) => _send(
     'POST',
     '/me/wallet/topup',
@@ -277,6 +281,7 @@ class ApiClient {
     String path, {
     Map<String, String>? query,
     Object? body,
+    List<int>? bytes,
     Map<String, String>? headers,
     bool auth = true,
     bool retry = true,
@@ -287,6 +292,7 @@ class ApiClient {
     final request = http.Request(method, uri)
       ..headers.addAll({..._headers, ...?headers});
     if (body != null) request.body = jsonEncode(body);
+    if (bytes != null) request.bodyBytes = bytes;
 
     http.Response response;
     try {
@@ -312,6 +318,7 @@ class ApiClient {
         path,
         query: query,
         body: body,
+        bytes: bytes,
         headers: headers,
         auth: auth,
         retry: false,

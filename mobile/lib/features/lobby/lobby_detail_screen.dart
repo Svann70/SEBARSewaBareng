@@ -359,8 +359,7 @@ class _PhotoHeader extends StatelessWidget {
         children: [
           Positioned.fill(
             child: CourtPhoto(
-              venue: lobby.venue,
-              court: lobby.court,
+              url: lobby.photoUrl,
               height: 220,
               radius: 0,
               scrim: true,
