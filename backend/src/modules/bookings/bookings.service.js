@@ -10,7 +10,7 @@ export async function listMine(userId) {
        JOIN court_slots s ON s.id = b.slot_id
        JOIN courts c ON c.id = s.court_id
        JOIN venues v ON v.id = c.venue_id
-      WHERE m.user_id = $1 AND m.status = 'CONFIRMED'
+      WHERE m.user_id = $1 AND m.status = 'ACTIVE'
       ORDER BY s.start_at DESC`,
     [userId],
   );

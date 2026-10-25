@@ -6,7 +6,7 @@ export const SLOT_SELECT = `
   SELECT s.*, c.name AS court_name, c.sport_type, l.id AS lobby_id, l.quota AS lobby_quota,
          hu.full_name AS host_name,
          (SELECT count(*)::int FROM lobby_members m
-           WHERE m.lobby_id = l.id AND m.status IN ('HOLDING', 'CONFIRMED')) AS joined_count
+           WHERE m.lobby_id = l.id AND m.status = 'ACTIVE') AS joined_count
     FROM court_slots s
     JOIN courts c ON c.id = s.court_id
     JOIN venues v ON v.id = c.venue_id

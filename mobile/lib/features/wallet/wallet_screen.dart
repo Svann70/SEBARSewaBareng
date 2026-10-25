@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/money.dart';
@@ -84,13 +85,7 @@ class WalletScreen extends ConsumerWidget {
                   child: GhostButton(
                     label: 'Tarik dana',
                     height: 46,
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Penarikan tersedia setelah jadwal selesai.',
-                        ),
-                      ),
-                    ),
+                    onPressed: () => _withdraw(context, ref),
                   ),
                 ),
               ],
@@ -99,7 +94,8 @@ class WalletScreen extends ConsumerWidget {
             if (held.isNotEmpty) ...[
               const SectionHeader('Sedang dikunci'),
               const SizedBox(height: 4),
-              for (final e in held) _HeldRow(entry: e),
+              for (final e in held)
+                _HeldRow(entry: e, onTap: () => _showEntryDetail(context, e)),
               const SizedBox(height: 20),
             ],
             const SectionHeader('Riwayat'),
@@ -117,7 +113,10 @@ class WalletScreen extends ConsumerWidget {
                 if (i > 0 &&
                     _dayGroup(ledger[i].at) != _dayGroup(ledger[i - 1].at))
                   _DayLabel(_dayGroup(ledger[i].at)),
-                _LedgerRow(entry: ledger[i]),
+                _LedgerRow(
+                  entry: ledger[i],
+                  onTap: () => _showEntryDetail(context, ledger[i]),
+                ),
               ],
             ],
             const SizedBox(height: 12),
@@ -139,6 +138,65 @@ class WalletScreen extends ConsumerWidget {
     if (diff == 0) return 'HARI INI';
     if (diff < 7) return 'MINGGU INI';
     return formatDate(at).toUpperCase();
+  }
+
+  Future<void> _showEntryDetail(BuildContext context, WalletEntry entry) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => SheetWrap(
+        title: 'Detail pembayaran',
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: Text(entry.label, style: T.h2)),
+              const SizedBox(width: 12),
+              Text(
+                _amountLabel(entry),
+                style: TextStyle(
+                  color: entry.amount < 0 ? C.ink : C.primary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _DetailRow(label: 'Status', value: 'Berhasil'),
+          _DetailRow(label: 'Jenis', value: entry.typeLabel),
+          _DetailRow(
+            label: 'Waktu',
+            value: '${formatLongDate(entry.at)} · ${formatTime(entry.at)}',
+          ),
+          if (entry.balanceAfter != null)
+            _DetailRow(
+              label: 'Saldo setelah transaksi',
+              value: rupiah(entry.balanceAfter!),
+            ),
+          if (entry.heldAfter != null)
+            _DetailRow(
+              label: 'Saldo terkunci setelah transaksi',
+              value: rupiah(entry.heldAfter!),
+            ),
+          if (entry.refType != null)
+            _DetailRow(label: 'Referensi', value: entry.refType!),
+          if (entry.refId != null)
+            _DetailRow(label: 'ID transaksi', value: entry.refId!),
+          const SizedBox(height: 8),
+          const Text(
+            'Detail ini berasal dari catatan transaksi server dan tidak dapat '
+            'diubah.',
+            style: T.caption,
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _amountLabel(WalletEntry entry) {
+    if (entry.amount == 0) return 'Tidak berubah';
+    return '${entry.amount < 0 ? '-' : '+'}${rupiah(entry.amount.abs())}';
   }
 
   Future<void> _topUp(BuildContext context, WidgetRef ref) async {
@@ -210,6 +268,74 @@ class WalletScreen extends ConsumerWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(error ?? '${rupiah(amount)} ditambahkan ke saldo.'),
+      ),
+    );
+  }
+
+  Future<void> _withdraw(BuildContext context, WidgetRef ref) async {
+    const fee = 2500;
+    final available = ref.read(walletProvider).available;
+
+    final draft = await showModalBottomSheet<(int, String, String, String)>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _WithdrawSheet(
+        available: available,
+        fee: fee,
+      ),
+    );
+    if (draft == null || !context.mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Konfirmasi penarikan'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DetailRow(label: 'Nominal diterima', value: rupiah(draft.$1)),
+            _DetailRow(label: 'Fee penarikan', value: rupiah(fee)),
+            _DetailRow(label: 'Total dipotong', value: rupiah(draft.$1 + fee)),
+            _DetailRow(label: 'Rekening', value: '${draft.$2} · ${draft.$3}'),
+            _DetailRow(label: 'Nama', value: draft.$4),
+            const SizedBox(height: 8),
+            const Text(
+              'Dana akan berstatus menunggu proses dan saldo langsung dikurangi.',
+              style: T.caption,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Tarik dana'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final error = await ref
+        .read(walletProvider.notifier)
+        .withdrawRemote(
+          amount: draft.$1,
+          bankCode: draft.$2,
+          accountNumber: draft.$3,
+          accountName: draft.$4,
+        );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error ??
+              '${rupiah(draft.$1)} berhasil diajukan. Fee ${rupiah(fee)} '
+                  'sudah dipotong.',
+        ),
       ),
     );
   }
@@ -301,42 +427,136 @@ class _DayLabel extends StatelessWidget {
 }
 
 class _HeldRow extends StatelessWidget {
-  const _HeldRow({required this.entry});
+  const _HeldRow({required this.entry, required this.onTap});
 
   final WalletEntry entry;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.lock_outline, size: 16, color: C.amber),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: C.ink,
+                    ),
+                  ),
+                  Text('Dipotong saat room penuh', style: T.caption),
+                ],
+              ),
+            ),
+            Text(
+              rupiah(entry.amount.abs()),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: C.ink,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right, size: 18, color: C.faint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LedgerRow extends StatelessWidget {
+  const _LedgerRow({required this.entry, required this.onTap});
+
+  final WalletEntry entry;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final amount =
+        '${entry.amount < 0 ? '-' : '+'}'
+        '${rupiah(entry.amount.abs())}';
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: C.ink,
+                    ),
+                  ),
+                  Text(
+                    '${entry.typeLabel} · ${formatDate(entry.at)} '
+                    '${formatTime(entry.at)}',
+                    style: T.caption,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              amount,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: entry.amount < 0 ? C.ink : C.primary,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right, size: 18, color: C.faint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.lock_outline, size: 16, color: C.amber),
-          const SizedBox(width: 8),
+          SizedBox(width: 132, child: Text(label, style: T.caption)),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: C.ink,
-                  ),
-                ),
-                Text('Dipotong saat room penuh', style: T.caption),
-              ],
-            ),
-          ),
-          Text(
-            rupiah(entry.amount.abs()),
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: C.ink,
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: const TextStyle(
+                color: C.ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -345,49 +565,176 @@ class _HeldRow extends StatelessWidget {
   }
 }
 
-class _LedgerRow extends StatelessWidget {
-  const _LedgerRow({required this.entry});
+class _WithdrawSheet extends StatefulWidget {
+  const _WithdrawSheet({required this.available, required this.fee});
 
-  final WalletEntry entry;
+  final int available;
+  final int fee;
+
+  @override
+  State<_WithdrawSheet> createState() => _WithdrawSheetState();
+}
+
+class _WithdrawSheetState extends State<_WithdrawSheet> {
+  late final TextEditingController _amountController;
+  late final TextEditingController _accountController;
+  late final TextEditingController _nameController;
+  String _bankCode = 'BCA';
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _amountController = TextEditingController();
+    _accountController = TextEditingController();
+    _nameController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _accountController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final amount = int.tryParse(_amountController.text);
+    final account = _accountController.text.trim();
+    final name = _nameController.text.trim();
+
+    if (amount == null || amount < 10000) {
+      setState(() => _errorMessage = 'Minimal penarikan Rp10.000.');
+      return;
+    }
+    if (amount + widget.fee > widget.available) {
+      setState(
+        () => _errorMessage =
+            'Saldo tidak cukup untuk nominal dan fee penarikan.',
+      );
+      return;
+    }
+    if (account.length < 6) {
+      setState(() => _errorMessage = 'Nomor rekening minimal 6 digit.');
+      return;
+    }
+    if (name.length < 2) {
+      setState(
+        () => _errorMessage =
+            'Nama pemilik rekening wajib diisi (min. 2 karakter).',
+      );
+      return;
+    }
+
+    Navigator.pop(context, (
+      amount,
+      _bankCode,
+      account,
+      name,
+    ));
+  }
 
   @override
   Widget build(BuildContext context) {
-    final amount =
-        '${entry.amount < 0 ? '-' : '+'}'
-        '${rupiah(entry.amount.abs())}';
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
-      child: Row(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SheetWrap(
+        title: 'Tarik dana',
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: C.ink,
-                  ),
-                ),
-                Text(
-                  '${entry.typeLabel} · ${formatDate(entry.at)} '
-                  '${formatTime(entry.at)}',
-                  style: T.caption,
-                ),
-              ],
-            ),
+          Text('Saldo tersedia ${rupiah(widget.available)}', style: T.caption),
+          const SizedBox(height: 4),
+          const Text(
+            'Minimal penarikan Rp10.000. Biaya penarikan Rp2.500 per transaksi.',
+            style: T.caption,
           ),
-          const SizedBox(width: 8),
-          Text(
-            amount,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: entry.amount < 0 ? C.ink : C.primary,
+          const SizedBox(height: 16),
+          TextField(
+            controller: _amountController,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(
+              labelText: 'Nominal yang diterima',
+              prefixText: 'Rp ',
+            ),
+            onChanged: (_) {
+              if (_errorMessage != null) setState(() => _errorMessage = null);
+            },
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _bankCode,
+            decoration: const InputDecoration(labelText: 'Bank tujuan'),
+            items: const [
+              DropdownMenuItem(value: 'BCA', child: Text('BCA')),
+              DropdownMenuItem(value: 'BNI', child: Text('BNI')),
+              DropdownMenuItem(value: 'BRI', child: Text('BRI')),
+              DropdownMenuItem(value: 'MANDIRI', child: Text('Bank Mandiri')),
+              DropdownMenuItem(value: 'CIMB', child: Text('CIMB Niaga')),
+              DropdownMenuItem(
+                value: 'BSI',
+                child: Text('Bank Syariah Indonesia'),
+              ),
+            ],
+            onChanged: (value) =>
+                setState(() => _bankCode = value ?? _bankCode),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _accountController,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(labelText: 'Nomor rekening'),
+            onChanged: (_) {
+              if (_errorMessage != null) setState(() => _errorMessage = null);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _nameController,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Nama pemilik rekening',
+              hintText: 'Sesuai data bank',
+            ),
+            onChanged: (_) {
+              if (_errorMessage != null) setState(() => _errorMessage = null);
+            },
+          ),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: C.dangerSoft,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: C.danger.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 16, color: C.danger),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: C.danger,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: SebarButton(
+              label: 'Lanjutkan',
+              onPressed: _submit,
             ),
           ),
         ],

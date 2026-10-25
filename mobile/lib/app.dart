@@ -13,6 +13,7 @@ import 'features/community/community_screen.dart';
 import 'features/create/create_lobby_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/lobby/lobby_detail_screen.dart';
+import 'features/notifications/notifications_screen.dart';
 import 'features/profile/edit_profile_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/rooms/rooms_screen.dart';
@@ -79,6 +80,10 @@ final _routes = <RouteBase>[
   ),
   GoRoute(path: '/community', builder: (_, _) => const CommunityScreen()),
   GoRoute(path: '/forgot-password',builder: (context, state) => const ForgotPasswordScreen()),
+  GoRoute(
+    path: '/notifications',
+    builder: (_, _) => const NotificationsScreen(),
+  ),
 ];
 
 class SebarApp extends ConsumerWidget {

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { SPORTS } from '../../lib/sql.js';
 
 export const idSchema = z.object({ id: z.uuid() });
+export const memberParamsSchema = z.object({ id: z.uuid(), userId: z.uuid() });
 
 export const listSchema = z.object({
   city: z.string().trim().min(1).max(60).optional(),
