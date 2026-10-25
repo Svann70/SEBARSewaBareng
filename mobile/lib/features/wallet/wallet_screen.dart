@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/money.dart';
@@ -84,13 +85,7 @@ class WalletScreen extends ConsumerWidget {
                   child: GhostButton(
                     label: 'Tarik dana',
                     height: 46,
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Penarikan tersedia setelah jadwal selesai.',
-                        ),
-                      ),
-                    ),
+                    onPressed: () => _withdraw(context, ref),
                   ),
                 ),
               ],
@@ -273,6 +268,74 @@ class WalletScreen extends ConsumerWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(error ?? '${rupiah(amount)} ditambahkan ke saldo.'),
+      ),
+    );
+  }
+
+  Future<void> _withdraw(BuildContext context, WidgetRef ref) async {
+    const fee = 2500;
+    final available = ref.read(walletProvider).available;
+
+    final draft = await showModalBottomSheet<(int, String, String, String)>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _WithdrawSheet(
+        available: available,
+        fee: fee,
+      ),
+    );
+    if (draft == null || !context.mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Konfirmasi penarikan'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DetailRow(label: 'Nominal diterima', value: rupiah(draft.$1)),
+            _DetailRow(label: 'Fee penarikan', value: rupiah(fee)),
+            _DetailRow(label: 'Total dipotong', value: rupiah(draft.$1 + fee)),
+            _DetailRow(label: 'Rekening', value: '${draft.$2} · ${draft.$3}'),
+            _DetailRow(label: 'Nama', value: draft.$4),
+            const SizedBox(height: 8),
+            const Text(
+              'Dana akan berstatus menunggu proses dan saldo langsung dikurangi.',
+              style: T.caption,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Tarik dana'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final error = await ref
+        .read(walletProvider.notifier)
+        .withdrawRemote(
+          amount: draft.$1,
+          bankCode: draft.$2,
+          accountNumber: draft.$3,
+          accountName: draft.$4,
+        );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error ??
+              '${rupiah(draft.$1)} berhasil diajukan. Fee ${rupiah(fee)} '
+                  'sudah dipotong.',
+        ),
       ),
     );
   }
@@ -494,6 +557,184 @@ class _DetailRow extends StatelessWidget {
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WithdrawSheet extends StatefulWidget {
+  const _WithdrawSheet({required this.available, required this.fee});
+
+  final int available;
+  final int fee;
+
+  @override
+  State<_WithdrawSheet> createState() => _WithdrawSheetState();
+}
+
+class _WithdrawSheetState extends State<_WithdrawSheet> {
+  late final TextEditingController _amountController;
+  late final TextEditingController _accountController;
+  late final TextEditingController _nameController;
+  String _bankCode = 'BCA';
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _amountController = TextEditingController();
+    _accountController = TextEditingController();
+    _nameController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _accountController.dispose();
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final amount = int.tryParse(_amountController.text);
+    final account = _accountController.text.trim();
+    final name = _nameController.text.trim();
+
+    if (amount == null || amount < 10000) {
+      setState(() => _errorMessage = 'Minimal penarikan Rp10.000.');
+      return;
+    }
+    if (amount + widget.fee > widget.available) {
+      setState(
+        () => _errorMessage =
+            'Saldo tidak cukup untuk nominal dan fee penarikan.',
+      );
+      return;
+    }
+    if (account.length < 6) {
+      setState(() => _errorMessage = 'Nomor rekening minimal 6 digit.');
+      return;
+    }
+    if (name.length < 2) {
+      setState(
+        () => _errorMessage =
+            'Nama pemilik rekening wajib diisi (min. 2 karakter).',
+      );
+      return;
+    }
+
+    Navigator.pop(context, (
+      amount,
+      _bankCode,
+      account,
+      name,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SheetWrap(
+        title: 'Tarik dana',
+        children: [
+          Text('Saldo tersedia ${rupiah(widget.available)}', style: T.caption),
+          const SizedBox(height: 4),
+          const Text(
+            'Minimal penarikan Rp10.000. Biaya penarikan Rp2.500 per transaksi.',
+            style: T.caption,
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _amountController,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(
+              labelText: 'Nominal yang diterima',
+              prefixText: 'Rp ',
+            ),
+            onChanged: (_) {
+              if (_errorMessage != null) setState(() => _errorMessage = null);
+            },
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _bankCode,
+            decoration: const InputDecoration(labelText: 'Bank tujuan'),
+            items: const [
+              DropdownMenuItem(value: 'BCA', child: Text('BCA')),
+              DropdownMenuItem(value: 'BNI', child: Text('BNI')),
+              DropdownMenuItem(value: 'BRI', child: Text('BRI')),
+              DropdownMenuItem(value: 'MANDIRI', child: Text('Bank Mandiri')),
+              DropdownMenuItem(value: 'CIMB', child: Text('CIMB Niaga')),
+              DropdownMenuItem(
+                value: 'BSI',
+                child: Text('Bank Syariah Indonesia'),
+              ),
+            ],
+            onChanged: (value) =>
+                setState(() => _bankCode = value ?? _bankCode),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _accountController,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(labelText: 'Nomor rekening'),
+            onChanged: (_) {
+              if (_errorMessage != null) setState(() => _errorMessage = null);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _nameController,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Nama pemilik rekening',
+              hintText: 'Sesuai data bank',
+            ),
+            onChanged: (_) {
+              if (_errorMessage != null) setState(() => _errorMessage = null);
+            },
+          ),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: C.dangerSoft,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: C.danger.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 16, color: C.danger),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: C.danger,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: SebarButton(
+              label: 'Lanjutkan',
+              onPressed: _submit,
             ),
           ),
         ],

@@ -1281,7 +1281,7 @@ class WalletEntry {
     this.refId,
   });
 
-  final String type; // TOPUP, HOLD, RELEASE, CAPTURE, PENALTY
+  final String type; // TOPUP, HOLD, RELEASE, CAPTURE, PAYOUT, PENALTY
   final int amount; // negatif = keluar
   final String label;
   final DateTime at;
@@ -1300,6 +1300,7 @@ extension WalletEntryX on WalletEntry {
     'RELEASE' => 'Dana dilepas',
     'CAPTURE' => 'Pembayaran',
     'PENALTY' => 'Denda',
+    'PAYOUT' => 'Penarikan dana',
     _ => 'Mutasi',
   };
 }
@@ -1857,6 +1858,24 @@ class WalletNotifier extends Notifier<Wallet> {
     );
   }
 
+  void withdraw(int amount, {int fee = 2500, String? bankCode, String? accountNumber}) {
+    final total = amount + fee;
+    final entry = WalletEntry(
+      type: 'PAYOUT',
+      amount: -total,
+      label: 'Penarikan dana',
+      at: DateTime.now(),
+      balanceAfter: state.balance - total,
+      heldAfter: state.held,
+      refType: 'WITHDRAWAL',
+      refId: bankCode != null ? '$bankCode · $accountNumber' : null,
+    );
+    state = state.copyWith(
+      balance: state.balance - total,
+      entries: [entry, ...state.entries],
+    );
+  }
+
   // ── Sisi server ────────────────────────────────────────────────────────
 
   Future<String?> refresh() async {
@@ -1878,9 +1897,39 @@ class WalletNotifier extends Notifier<Wallet> {
   }
 
   Future<String?> topUpRemote(int amount) async {
+    if (!api.hasSession) {
+      topUp(amount);
+      return null;
+    }
     try {
       final key = 'app-${DateTime.now().microsecondsSinceEpoch}';
       await api.topup(amount, key);
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  Future<String?> withdrawRemote({
+    required int amount,
+    required String bankCode,
+    required String accountNumber,
+    required String accountName,
+  }) async {
+    if (!api.hasSession) {
+      withdraw(amount, bankCode: bankCode, accountNumber: accountNumber);
+      return null;
+    }
+    try {
+      final key = 'app-${DateTime.now().microsecondsSinceEpoch}';
+      await api.withdraw(
+        amount: amount,
+        bankCode: bankCode,
+        accountNumber: accountNumber,
+        accountName: accountName,
+        idempotencyKey: key,
+      );
       await refresh();
       return null;
     } catch (error) {
@@ -1900,6 +1949,7 @@ WalletEntry _entryFromApi(Map<String, dynamic> json) {
       'HOLD' => 'Dana dikunci',
       'RELEASE' => 'Dana dilepas',
       'PENALTY' => 'Denda',
+      'PAYOUT' => 'Penarikan dana',
       _ => 'Mutasi',
     },
     at: _asDate(json['createdAt']),
