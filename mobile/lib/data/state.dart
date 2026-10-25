@@ -284,6 +284,13 @@ int _asInt(dynamic value, [int fallback = 0]) {
   return fallback;
 }
 
+int? _asIntOrNull(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toInt();
+  if (value is String) return num.tryParse(value)?.toInt();
+  return null;
+}
+
 Map<String, dynamic> _asMap(dynamic value) =>
     value is Map ? value.cast<String, dynamic>() : <String, dynamic>{};
 
@@ -1267,12 +1274,22 @@ class WalletEntry {
     required this.amount,
     required this.label,
     required this.at,
+    this.id,
+    this.balanceAfter,
+    this.heldAfter,
+    this.refType,
+    this.refId,
   });
 
   final String type; // TOPUP, HOLD, RELEASE, CAPTURE, PENALTY
   final int amount; // negatif = keluar
   final String label;
   final DateTime at;
+  final String? id;
+  final int? balanceAfter;
+  final int? heldAfter;
+  final String? refType;
+  final String? refId;
 }
 
 /// Nama jenis mutasi untuk pengguna — kode internal tidak ditampilkan.
@@ -1886,6 +1903,11 @@ WalletEntry _entryFromApi(Map<String, dynamic> json) {
       _ => 'Mutasi',
     },
     at: _asDate(json['createdAt']),
+    id: json['id'] as String?,
+    balanceAfter: _asIntOrNull(json['balanceAfter']),
+    heldAfter: _asIntOrNull(json['heldAfter']),
+    refType: json['refType'] as String?,
+    refId: json['refId'] as String?,
   );
 }
 

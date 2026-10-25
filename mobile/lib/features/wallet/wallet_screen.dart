@@ -99,7 +99,8 @@ class WalletScreen extends ConsumerWidget {
             if (held.isNotEmpty) ...[
               const SectionHeader('Sedang dikunci'),
               const SizedBox(height: 4),
-              for (final e in held) _HeldRow(entry: e),
+              for (final e in held)
+                _HeldRow(entry: e, onTap: () => _showEntryDetail(context, e)),
               const SizedBox(height: 20),
             ],
             const SectionHeader('Riwayat'),
@@ -117,7 +118,10 @@ class WalletScreen extends ConsumerWidget {
                 if (i > 0 &&
                     _dayGroup(ledger[i].at) != _dayGroup(ledger[i - 1].at))
                   _DayLabel(_dayGroup(ledger[i].at)),
-                _LedgerRow(entry: ledger[i]),
+                _LedgerRow(
+                  entry: ledger[i],
+                  onTap: () => _showEntryDetail(context, ledger[i]),
+                ),
               ],
             ],
             const SizedBox(height: 12),
@@ -139,6 +143,65 @@ class WalletScreen extends ConsumerWidget {
     if (diff == 0) return 'HARI INI';
     if (diff < 7) return 'MINGGU INI';
     return formatDate(at).toUpperCase();
+  }
+
+  Future<void> _showEntryDetail(BuildContext context, WalletEntry entry) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => SheetWrap(
+        title: 'Detail pembayaran',
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: Text(entry.label, style: T.h2)),
+              const SizedBox(width: 12),
+              Text(
+                _amountLabel(entry),
+                style: TextStyle(
+                  color: entry.amount < 0 ? C.ink : C.primary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _DetailRow(label: 'Status', value: 'Berhasil'),
+          _DetailRow(label: 'Jenis', value: entry.typeLabel),
+          _DetailRow(
+            label: 'Waktu',
+            value: '${formatLongDate(entry.at)} · ${formatTime(entry.at)}',
+          ),
+          if (entry.balanceAfter != null)
+            _DetailRow(
+              label: 'Saldo setelah transaksi',
+              value: rupiah(entry.balanceAfter!),
+            ),
+          if (entry.heldAfter != null)
+            _DetailRow(
+              label: 'Saldo terkunci setelah transaksi',
+              value: rupiah(entry.heldAfter!),
+            ),
+          if (entry.refType != null)
+            _DetailRow(label: 'Referensi', value: entry.refType!),
+          if (entry.refId != null)
+            _DetailRow(label: 'ID transaksi', value: entry.refId!),
+          const SizedBox(height: 8),
+          const Text(
+            'Detail ini berasal dari catatan transaksi server dan tidak dapat '
+            'diubah.',
+            style: T.caption,
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _amountLabel(WalletEntry entry) {
+    if (entry.amount == 0) return 'Tidak berubah';
+    return '${entry.amount < 0 ? '-' : '+'}${rupiah(entry.amount.abs())}';
   }
 
   Future<void> _topUp(BuildContext context, WidgetRef ref) async {
@@ -301,93 +364,136 @@ class _DayLabel extends StatelessWidget {
 }
 
 class _HeldRow extends StatelessWidget {
-  const _HeldRow({required this.entry});
+  const _HeldRow({required this.entry, required this.onTap});
 
   final WalletEntry entry;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          const Icon(Icons.lock_outline, size: 16, color: C.amber),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: C.ink,
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.lock_outline, size: 16, color: C.amber),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: C.ink,
+                    ),
                   ),
-                ),
-                Text('Dipotong saat room penuh', style: T.caption),
-              ],
+                  Text('Dipotong saat room penuh', style: T.caption),
+                ],
+              ),
             ),
-          ),
-          Text(
-            rupiah(entry.amount.abs()),
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: C.ink,
+            Text(
+              rupiah(entry.amount.abs()),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: C.ink,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right, size: 18, color: C.faint),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _LedgerRow extends StatelessWidget {
-  const _LedgerRow({required this.entry});
+  const _LedgerRow({required this.entry, required this.onTap});
 
   final WalletEntry entry;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final amount =
         '${entry.amount < 0 ? '-' : '+'}'
         '${rupiah(entry.amount.abs())}';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: C.ink,
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: C.ink,
+                    ),
                   ),
-                ),
-                Text(
-                  '${entry.typeLabel} · ${formatDate(entry.at)} '
-                  '${formatTime(entry.at)}',
-                  style: T.caption,
-                ),
-              ],
+                  Text(
+                    '${entry.typeLabel} · ${formatDate(entry.at)} '
+                    '${formatTime(entry.at)}',
+                    style: T.caption,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            amount,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: entry.amount < 0 ? C.ink : C.primary,
+            const SizedBox(width: 8),
+            Text(
+              amount,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: entry.amount < 0 ? C.ink : C.primary,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right, size: 18, color: C.faint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 132, child: Text(label, style: T.caption)),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: const TextStyle(
+                color: C.ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
