@@ -2120,22 +2120,10 @@ final walletProvider = NotifierProvider<WalletNotifier, Wallet>(
 );
 
 class BookingsNotifier extends Notifier<List<Booking>> {
+  /// Kosong sampai `/me/bookings` menjawab: tiket contoh tidak boleh tampil
+  /// seolah-olah tiket asli.
   @override
-  List<Booking> build() => [
-    Booking(
-      id: 'bk1',
-      code: 'SEB-4K2P',
-      title: 'Badminton Jumat Malam',
-      venue: 'GOR C-Tra Arena',
-      court: 'Lapangan 1',
-      city: 'Bandung',
-      start: _at(1, 19),
-      end: _at(1, 21),
-      sport: Sport.badminton,
-      amount: 50000,
-      token: 'SEB-4K2P:u_raka:exp_1730000000:sig_9f2a',
-    ),
-  ];
+  List<Booking> build() => const [];
 
   void createFrom(Lobby lobby) {
     final code = 'SEB-${(1000 + DateTime.now().millisecondsSinceEpoch % 9000)}';

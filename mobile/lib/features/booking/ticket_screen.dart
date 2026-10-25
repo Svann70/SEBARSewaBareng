@@ -14,7 +14,29 @@ class TicketScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final booking = ref.watch(bookingsProvider).firstWhere((b) => b.id == id);
+    final matches = ref.watch(bookingsProvider).where((b) => b.id == id);
+    if (matches.isEmpty) {
+      return const Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: kScreenPad,
+            child: Column(
+              children: [
+                RoundBackHeader(title: 'Tiket'),
+                SizedBox(height: 14),
+                EmptyState(
+                  icon: Icons.confirmation_number_outlined,
+                  title: 'Tiket tidak ditemukan',
+                  message:
+                      'Tarik ke bawah di halaman Tiket untuk memuat ulang.',
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    final booking = matches.first;
 
     return Scaffold(
       body: SafeArea(
