@@ -26,7 +26,7 @@ Skema database **tidak** dikelola repo ini: tabel sudah ada di Supabase. Tidak a
 cd backend
 npm install
 cp .env.example .env      # isi DATABASE_URL, DATABASE_SSL_CA, JWT_SECRET
-npm run dev               # http://localhost:3000/healthz
+npm run dev               # http://localhost:3000/health
 ```
 
 Supabase:
@@ -92,12 +92,12 @@ Belum (v2, lihat SDD): endpoint QR check-in (baris `checkins` sudah dibuat DB), 
 
 ## API
 
-Semua kecuali `/auth/*` dan `/healthz` butuh `Authorization: Bearer <token>`.
+Semua kecuali `/auth/*` dan `/health` butuh `Authorization: Bearer <token>`.
 Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM-DD`).
 
 | Method | Path | Peran | Body / Query | Sukses | Error utama |
 |---|---|---|---|---|---|
-| GET | `/healthz` | - | - | 200 | |
+| GET | `/health` | - | - | 200 | |
 | POST | `/auth/register` | - | email, password (≥8), fullName, phone?, role? (`PLAYER`/`VENUE_ADMIN`), venue? (wajib untuk `VENUE_ADMIN`: name, address, city, description?) | 201 token + `user` | 409, 422 |
 | POST | `/auth/login` | - | email, password, role? (tab yang dipilih di app) | 200 token + `user` | 401, 403 `WRONG_ACCOUNT_TYPE` |
 | POST | `/auth/refresh` | - | refreshToken | 200 token baru (refresh token lama tidak berlaku lagi) | 401 |
