@@ -1,0 +1,17 @@
+# Usage (from backend/):
+#   docker compose run --rm api node db/migrate.js   # apply pending migrations once per deploy
+#   docker compose up -d --build
+services:
+  api:
+    build: .
+    image: sebar-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: 3000
+      DATABASE_SSL_CA: /certs/supabase-ca.crt
+    ports:
+      - "3000:3000"
+    volumes:
+      # Supabase CA from Dashboard > Database > Settings > SSL Configuration.
+      - ./prod-ca-2021.crt:/certs/supabase-ca.crt:ro
