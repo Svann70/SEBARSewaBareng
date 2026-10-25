@@ -1333,6 +1333,7 @@ class Lobby {
   int get share => serverShare ?? pricePerPersonOf(priceTotal, quota);
   int get joined => members.where((m) => m.isActive).length;
   int get remaining => quota - (seats ?? joined) + vacant;
+
   bool get isFull => seats != null ? serverJoinCost == null : remaining <= 0;
   bool get joinedByMe =>
       mine?.status == 'ACTIVE' ||
@@ -1801,6 +1802,12 @@ class LobbiesNotifier extends Notifier<List<Lobby>> {
         ? 'Room dibubarkan tanpa denda. Semua dana kembali.'
         : 'Room dibubarkan. Denda ${rupiah(fine)} dibagi ke anggota '
               'dan venue.';
+  });
+
+  /// Host mengunci room lebih awal: join ditutup, tiket terbit.
+  Future<(String?, String?)> lockRemote(String id) => _mutate(id, () async {
+    await api.post('/lobbies/$id/lock');
+    return 'Room dikunci. Tiket QR sudah terbit.';
   });
 
   /// Host mengeluarkan anggota (refund penuh ke anggota itu).

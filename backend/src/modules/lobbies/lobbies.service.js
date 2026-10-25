@@ -3,7 +3,7 @@ import { AppError } from '../../lib/errors.js';
 import { onDateWib } from '../../lib/sql.js';
 import { coverPhoto } from '../venues/courts.shared.js';
 import { clearFreeSlots } from '../venues/slots.shared.js';
-import { addHost, disbandLobby, JOIN_CLOSE_MINUTES, joinCost, joinLobby, kickMember, leaveLobby, shareOf } from './patungan.service.js';
+import { addHost, disbandLobby, JOIN_CLOSE_MINUTES, joinCost, joinLobby, kickMember, leaveLobby, lockLobby, shareOf } from './patungan.service.js';
 
 export const PAGE_SIZE = 20;
 const MAX_ACTIVE_HOSTED = 3;
@@ -223,3 +223,4 @@ export async function join(lobbyId, userId) {
 export const leave = (lobbyId, userId) => tx((c) => leaveLobby(c, lobbyId, userId));
 export const kick = (lobbyId, hostId, targetId) => tx((c) => kickMember(c, lobbyId, hostId, targetId));
 export const disband = (lobbyId, userId) => tx((c) => disbandLobby(c, lobbyId, userId));
+export const lock = (lobbyId, userId) => tx((c) => lockLobby(c, lobbyId, userId));

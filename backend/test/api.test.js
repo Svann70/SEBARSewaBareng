@@ -490,7 +490,7 @@ describe('lobby (patungan v2)', { skip }, () => {
   test('protection: a share above the join share lets a locked member leave for free', async () => {
     const v = await venueWithCourt();
     const host = await player(500_000);
-    const lobby = (await createLobby(host, (await v.slot(400_000)).id, 4)).body;
+    const lobby = (await createLobby(host, (await v.slot(400_000)).id, 5)).body;
     const [a, b, c] = [await player(500_000), await player(500_000), await player(500_000)];
     await join(a, lobby); // n=2, 200k
     await join(b, lobby); // n=3, 133333
@@ -624,7 +624,7 @@ describe('lobby (patungan v2)', { skip }, () => {
   test('protection ends once the share is back down', async () => {
     const v = await venueWithCourt();
     const host = await player(500_000);
-    const lobby = (await createLobby(host, (await v.slot(400_000)).id, 4)).body;
+    const lobby = (await createLobby(host, (await v.slot(400_000)).id, 5)).body;
     const [m, s, g] = [await player(500_000), await player(500_000), await player(500_000)];
     await join(m, lobby); // n=2, m agreed to 200k
     await join(s, lobby); // n=3
@@ -671,7 +671,7 @@ describe('lobby (patungan v2)', { skip }, () => {
     assert.equal((await api('DELETE', `/lobbies/${lobby.id}/members/${j.id}`, { token: host.token })).status, 403, 'ex-host cannot kick');
   });
 
-  test('20 concurrent joins on quota 8: exactly 7 succeed, holds add up', async () => {
+  test('20 concurrent joins on quota 8: exactly 7 succeed; a full room stays open', async () => {
     const v = await venueWithCourt();
     const host = await player(500_000);
     const lobby = (await createLobby(host, (await v.slot(400_000)).id, 8)).body;
@@ -682,6 +682,33 @@ describe('lobby (patungan v2)', { skip }, () => {
     const holds = await Promise.all(players.map(held));
     assert.equal(holds.filter((h) => h > 0).length, 7);
     assert.equal(holds.filter((h) => h === 0).length, 13);
+    assert.equal((await detail(host, lobby)).status, 'OPEN', 'no automatic lock');
+  });
+
+  test('host locks the room early: booking, tickets, no free exit; only the host can', async () => {
+    const v = await venueWithCourt();
+    const host = await player(500_000);
+    const lobby = (await createLobby(host, (await v.slot(400_000)).id, 4)).body;
+    const [a, b] = [await player(500_000), await player(500_000)];
+    await join(a, lobby);
+    await join(b, lobby);
+    assert.equal((await api('POST', `/lobbies/${lobby.id}/lock`, { token: a.token })).status, 403);
+    const r = await api('POST', `/lobbies/${lobby.id}/lock`, { token: host.token });
+    assert.deepEqual(r.body, { locked: true });
+    const d = await detail(a, lobby);
+    assert.equal(d.status, 'CONFIRMED');
+    assert.equal(d.me.phase, 'FINAL');
+    assert.deepEqual(await wallet(a), { balance: 366_667, held: 0, available: 366_667 });
+    assert.deepEqual(await wallet(host), { balance: 366_666, held: 0, available: 366_666 });
+    assert.equal((await api('GET', '/me/bookings', { token: b.token })).body.items.length, 1, 'ticket is out');
+    assert.deepEqual((await leave(a, lobby)).body, { phase: 'FINAL', refund: 0 });
+    assert.equal((await join(await player(500_000), lobby)).body.error.code, 'LOBBY_FULL', 'join closed');
+    assert.equal((await join(b, lobby)).status, 200, 'retry by a member still returns the seat');
+    assert.equal((await api('POST', `/lobbies/${lobby.id}/lock`, { token: host.token })).status, 410, 'lock once');
+    const { runLobbyJobs } = await import('../src/modules/lobbies/jobs.js');
+    await closeJoin(lobby);
+    await runLobbyJobs();
+    assert.equal((await db.query('SELECT count(*)::int AS n FROM bookings WHERE lobby_id = $1', [lobby.id])).rows[0].n, 1, 'job does not close twice');
   });
 
   test('ledger always reconciles with wallet balances', async () => {

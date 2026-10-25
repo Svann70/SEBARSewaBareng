@@ -9,6 +9,7 @@ lobbiesRoutes.get('/', controller.list);
 lobbiesRoutes.post('/', requireRole('PLAYER'), controller.create);
 lobbiesRoutes.get('/:id', controller.detail);
 lobbiesRoutes.post('/:id/join', requireRole('PLAYER'), controller.join);
+lobbiesRoutes.post('/:id/lock', controller.lock);
 lobbiesRoutes.delete('/:id/members/me', controller.leave);
 lobbiesRoutes.delete('/:id/members/:userId', controller.kick);
 lobbiesRoutes.delete('/:id', controller.disband);

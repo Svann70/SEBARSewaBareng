@@ -69,8 +69,8 @@ class _TicketsScreenState extends ConsumerState<TicketsScreen> {
                     ? 'Tidak ada yang menunggu'
                     : 'Belum ada tiket',
                 message: _tab == 1
-                    ? 'Tiket terbit otomatis begitu absen room penuh.'
-                    : 'Tiket terbit otomatis saat kuota room terpenuhi.',
+                    ? 'Tiket terbit saat host mengunci room atau join ditutup.'
+                    : 'Tiket terbit saat host mengunci room, atau 30 menit sebelum main.',
                 action: GhostButton(
                   label: 'Cari room',
                   icon: Icons.search,
@@ -117,7 +117,7 @@ class _TicketsScreenState extends ConsumerState<TicketsScreen> {
                 ),
             const SizedBox(height: 14),
             Text(
-              'Tiket terbit otomatis saat absen room penuh. Tunjukkan QR ke '
+              'Tiket terbit saat host mengunci room atau 30 menit sebelum main. Tunjukkan QR ke '
               'petugas venue sebelum main.',
               style: T.caption,
             ),

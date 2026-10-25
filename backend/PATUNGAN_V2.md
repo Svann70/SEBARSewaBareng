@@ -18,7 +18,8 @@ dengan uang di dompet (hold / release / capture) dan job terjadwal.
     Kalau saldo tidak cukup, anggota itu otomatis `LEFT` dengan refund penuh (`AUTO_LEFT`), lalu porsi
     dihitung ulang. Jaminan penjamin tidak pernah menanggung anggota; hanya kursi `VACANT` yang porsinya
     naik setelah ditinggal yang selisihnya jatuh ke penjamin.
-- Join ditutup = `start − 30 menit`. Job menjalankan capture: tiap kursi non-host dipotong `min(porsi, hold)`,
+- Join ditutup = `start − 30 menit`, **atau saat host mengunci room** (`POST /lobbies/:id/lock`, kapan saja
+  sebelum join ditutup: `closeLobby(..., { early: true })` memajukan `join_deadline` ke `now()`). Capture: tiap kursi non-host dipotong `min(porsi, hold)`,
   penjamin dipotong `P − jumlah itu`. Lalu booking dan payout venue dibuat (fee platform 5% seperti sekarang).
 
 ## Status anggota (baru)

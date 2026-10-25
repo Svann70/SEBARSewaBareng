@@ -46,7 +46,7 @@ const isInsufficient = (err) => err.code === 'P0001' && err.message === 'SEBAR::
 // ── Reads ────────────────────────────────────────────────────────────────────
 
 // Lobby row lock plus the clock facts every rule needs, all from the DB clock.
-async function lockLobby(c, lobbyId) {
+async function lockLobbyRow(c, lobbyId) {
   const { rows } = await c.query(
     `SELECT l.*, s.start_at, s.end_at,
             l.join_deadline <= now() AS closed,
@@ -168,18 +168,17 @@ export function joinCost(price, seats, vacant, quota) {
 }
 
 export async function joinLobby(c, lobbyId, userId) {
-  const lobby = await lockLobby(c, lobbyId);
-  if (lobby.status !== 'OPEN') throw new AppError(409, 'LOBBY_FULL', 'Room sudah tidak menerima anggota.');
-  if (lobby.closed) throw new AppError(410, 'DEADLINE_PASSED', 'Join sudah ditutup.');
-
+  const lobby = await lockLobbyRow(c, lobbyId);
   const { rows: mine } = await c.query(
     `SELECT *, cancelled_at > now() - interval '10 minutes' AS cooling
        FROM lobby_members WHERE lobby_id = $1 AND user_id = $2 ORDER BY joined_at DESC`,
     [lobbyId, userId],
   );
   const current = mine.find((m) => m.status === 'ACTIVE');
-  // Retrying a successful join returns the same seat (BR-2.3).
+  // Retrying a successful join returns the same seat (BR-2.3), even when that join filled and locked the room.
   if (current) return { member: current, created: false };
+  if (lobby.status !== 'OPEN') throw new AppError(409, 'LOBBY_FULL', 'Room sudah tidak menerima anggota.');
+  if (lobby.closed) throw new AppError(410, 'DEADLINE_PASSED', 'Join sudah ditutup.');
   if (mine.some((m) => m.status === 'VACANT' || m.status === 'ABSENT')) {
     throw new AppError(409, 'ALREADY_JOINED', 'Kamu sudah keluar dari room ini; kursimu menunggu pengganti.');
   }
@@ -199,8 +198,8 @@ export async function joinLobby(c, lobbyId, userId) {
   if (!vacant && seats.length >= lobby.quota) throw new AppError(409, 'LOBBY_FULL', 'Room sudah penuh.');
 
   const share = shareOf(lobby.price, vacant ? seats.length : seats.length + 1);
-  const others = seats.filter((m) => m.user_id !== lobby.creator_id).map((m) => m.user_id);
-  await lockWallets(c, [userId, ...others]);
+  // Every seat, creator included: a join that fills the room closes it in this transaction.
+  await lockWallets(c, [userId, ...seats.map((m) => m.user_id)]);
   await hold(c, userId, share, lobbyId);
   // A replacement takes a seat that is already locked, so it gets no free period.
   const { rows } = await c.query(
@@ -227,6 +226,17 @@ export async function joinLobby(c, lobbyId, userId) {
   // The host left on match day while alone: the first one to join takes over.
   await handOverHost(c, lobby);
   return { member: rows[0], created: true };
+}
+
+// Host locks the room before the deadline (rule 4.3): join closes now and tickets are issued.
+export async function lockLobby(c, lobbyId, hostId) {
+  const lobby = await lockLobbyRow(c, lobbyId);
+  if (lobby.host_id !== hostId || !(await myRow(c, lobbyId, hostId))) {
+    throw new AppError(403, 'FORBIDDEN', 'Hanya host yang bisa mengunci room.');
+  }
+  if (lobby.status !== 'OPEN' || lobby.closed) throw new AppError(410, 'DEADLINE_PASSED', 'Join sudah ditutup.');
+  await closeLobby(c, lobbyId, { early: true });
+  return { locked: true };
 }
 
 // Host rights go to the earliest-joined ACTIVE member when the host's own seat is no longer active
@@ -258,7 +268,7 @@ async function handOverHost(c, lobby) {
 // Leaving depends on the member's phase: free (or protected) = full refund; locked = vacant seat;
 // after join closed = no refund. The host can only leave on match day (otherwise: disband).
 export async function leaveLobby(c, lobbyId, userId) {
-  const lobby = await lockLobby(c, lobbyId);
+  const lobby = await lockLobbyRow(c, lobbyId);
   if (!['OPEN', 'CONFIRMED'].includes(lobby.status) || lobby.finished) {
     throw new AppError(409, 'CONFLICT', 'Room sudah selesai atau dibatalkan.');
   }
@@ -295,7 +305,7 @@ export async function leaveLobby(c, lobbyId, userId) {
 }
 
 export async function kickMember(c, lobbyId, hostId, targetId) {
-  const lobby = await lockLobby(c, lobbyId);
+  const lobby = await lockLobbyRow(c, lobbyId);
   if (lobby.host_id !== hostId || !(await myRow(c, lobbyId, hostId))) {
     throw new AppError(403, 'FORBIDDEN', 'Hanya host yang bisa mengeluarkan anggota.');
   }
@@ -318,7 +328,7 @@ export async function kickMember(c, lobbyId, hostId, targetId) {
 // otherwise the fine = host's share: half to the venue owner's wallet, half split over the members
 // (remainder to the venue). Everyone else, vacant seats and held fines get their money back.
 export async function disbandLobby(c, lobbyId, hostId) {
-  const lobby = await lockLobby(c, lobbyId);
+  const lobby = await lockLobbyRow(c, lobbyId);
   if (lobby.host_id !== hostId) throw new AppError(403, 'FORBIDDEN', 'Hanya host yang bisa membubarkan room.');
   if (lobby.status !== 'OPEN') throw new AppError(409, 'CONFLICT', 'Room sudah tidak bisa dibubarkan.');
   if (lobby.match_day) throw new AppError(409, 'MATCH_DAY', 'Di hari H room tidak bisa dibubarkan.');
@@ -373,11 +383,14 @@ export async function disbandLobby(c, lobbyId, hostId) {
 
 // ── Scheduled jobs ───────────────────────────────────────────────────────────
 
-// Join closed: vacant seats are forfeited, every seat pays its share (capped by what it holds),
-// the creator pays the rest of P, and the booking + venue payout are created.
-export async function closeLobby(c, lobbyId) {
-  const lobby = await lockLobby(c, lobbyId);
-  if (lobby.status !== 'OPEN' || !lobby.closed) return false;
+// Join closed (deadline passed, or `early` when the host locks the room): vacant seats are forfeited,
+// every seat pays its share (capped by what it holds), the creator pays the rest of P, and the
+// booking + venue payout are created.
+export async function closeLobby(c, lobbyId, { early = false } = {}) {
+  const lobby = await lockLobbyRow(c, lobbyId);
+  if (lobby.status !== 'OPEN' || (!lobby.closed && !early)) return false;
+  // Locked before the deadline: join is closed now, so free periods and protection end here too.
+  if (!lobby.closed) await c.query('UPDATE lobbies SET join_deadline = now() WHERE id = $1', [lobbyId]);
   const seats = await lockSeats(c, lobbyId);
   const share = shareOf(lobby.price, seats.length);
   await lockWallets(c, seats.map((m) => m.user_id));
@@ -430,7 +443,7 @@ export async function closeLobby(c, lobbyId) {
 
 // Room finished: fines of replaced members go to the members still in the room (remainder to the host).
 export async function settleLobby(c, lobbyId) {
-  const lobby = await lockLobby(c, lobbyId);
+  const lobby = await lockLobbyRow(c, lobbyId);
   if (lobby.status !== 'CONFIRMED' || !lobby.finished || lobby.settled_at) return false;
   const { rows: fined } = await c.query(
     `SELECT *, hold_amount::float8 AS held FROM lobby_members WHERE lobby_id = $1 AND status = 'REPLACED' AND hold_amount > 0 FOR UPDATE`,

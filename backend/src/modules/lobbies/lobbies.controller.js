@@ -79,6 +79,11 @@ export async function kick(req, res) {
   res.json(await service.kick(id, req.user.id, userId));
 }
 
+export async function lock(req, res) {
+  const { id } = idSchema.parse(req.params);
+  res.json(await service.lock(id, req.user.id));
+}
+
 export async function disband(req, res) {
   const { id } = idSchema.parse(req.params);
   res.json(await service.disband(id, req.user.id));

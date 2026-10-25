@@ -187,6 +187,7 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
         onJoin: () => _openJoinSheet(context, ref, lobby),
         onLeave: () => _confirmLeave(context, ref, lobby),
         onDisband: () => _confirmDisband(context, ref, lobby),
+        onLock: () => _confirmLock(context, ref, lobby),
       ),
     );
   }
@@ -377,6 +378,29 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
     await _run(
       context,
       ref.read(lobbiesProvider.notifier).kickRemote(lobby.id, m.userId!),
+    );
+  }
+
+  Future<void> _confirmLock(
+    BuildContext context,
+    WidgetRef ref,
+    Lobby lobby,
+  ) async {
+    if (!await _ask(
+      context,
+      title: 'Kunci room sekarang?',
+      body:
+          'Join langsung ditutup: dana semua anggota dipotong, tiket QR '
+          'terbit, dan masa bebas anggota berakhir. Kamu membayar sisa biaya '
+          'lapangan; sisa jaminanmu kembali.',
+      confirm: 'Kunci',
+    )) {
+      return;
+    }
+    if (!context.mounted) return;
+    await _run(
+      context,
+      ref.read(lobbiesProvider.notifier).lockRemote(lobby.id),
     );
   }
 
@@ -816,6 +840,7 @@ class _JoinBar extends StatelessWidget {
     required this.onJoin,
     required this.onLeave,
     required this.onDisband,
+    required this.onLock,
   });
 
   final Lobby lobby;
@@ -824,6 +849,7 @@ class _JoinBar extends StatelessWidget {
   final VoidCallback onJoin;
   final VoidCallback onLeave;
   final VoidCallback onDisband;
+  final VoidCallback onLock;
 
   /// Hari H (tanggal WIB main) sudah tiba: host tidak bisa membubarkan room.
   bool get _matchDay {
@@ -850,12 +876,27 @@ class _JoinBar extends StatelessWidget {
     final Widget action;
     if (leftSeat != null) {
       action = SebarButton(label: leftSeat, height: 46, onPressed: null);
-    } else if (joined && lobby.isHost && open && !_matchDay) {
-      action = GhostButton(
-        label: 'Bubarkan room',
-        color: C.danger,
-        height: 46,
-        onPressed: onDisband,
+    } else if (joined && lobby.isHost && open) {
+      // Host: kunci room lebih awal, plus bubar (sampai H-1) atau keluar (hari H).
+      action = Row(
+        children: [
+          Expanded(
+            child: GhostButton(
+              label: _matchDay ? 'Keluar' : 'Bubarkan',
+              color: C.danger,
+              height: 46,
+              onPressed: _matchDay ? onLeave : onDisband,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SebarButton(
+              label: 'Kunci room',
+              height: 46,
+              onPressed: onLock,
+            ),
+          ),
+        ],
       );
     } else if (joined) {
       action = GhostButton(
@@ -866,7 +907,9 @@ class _JoinBar extends StatelessWidget {
       );
     } else {
       action = SebarButton(
-        label: !open || lobby.isFull
+        label: !open
+            ? 'Join ditutup'
+            : lobby.isFull
             ? 'Room penuh'
             : enough
             ? 'Join · ${rupiah(lobby.pricePerPerson)}'
