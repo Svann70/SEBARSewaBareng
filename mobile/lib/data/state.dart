@@ -2194,9 +2194,10 @@ Booking _bookingFromApi(Map<String, dynamic> json) {
     end: _asDate(slot['endAt']),
     sport: sportFromApi(court['sport'] as String?),
     amount: _asInt(json['amountPaid']),
-    // Backend v1 belum menerbitkan token QR; kode booking dipakai sebagai
-    // isi QR. Scan validasi tetap di sisi venue (v2).
-    token: code,
+    // Kode check-in milik pemain ini (diketik venue saat masuk); cadangan:
+    // kode booking untuk tiket lama tanpa kode.
+    token: _asMap(json['checkin'])['code'] as String? ?? code,
+    checkedIn: _asMap(json['checkin'])['status'] == 'SCANNED',
   );
 }
 
@@ -2442,3 +2443,7 @@ final notificationsProvider =
     NotifierProvider<NotificationsNotifier, NotificationsState>(
       NotificationsNotifier.new,
     );
+
+/// Kode check-in 10 karakter dibagi dua supaya gampang dibaca: "A1B2C-3D4E5".
+String formatCheckinCode(String code) =>
+    code.length == 10 ? '${code.substring(0, 5)}-${code.substring(5)}' : code;

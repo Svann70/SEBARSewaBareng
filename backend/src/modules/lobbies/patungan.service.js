@@ -429,8 +429,9 @@ export async function closeLobby(c, lobbyId, { early = false } = {}) {
   );
   const players = seats.filter((m) => m.status === 'ACTIVE').map((m) => m.user_id);
   await c.query(
-    `INSERT INTO checkins (booking_id, user_id, token_hash, token_expires_at)
-     SELECT $1::uuid, u, encode(digest($1::uuid::text || ':' || u::text || ':' || clock_timestamp()::text, 'sha256'), 'hex'), $3::timestamptz + interval '2 hours'
+    `INSERT INTO checkins (booking_id, user_id, token_hash, token_expires_at, code)
+     SELECT $1::uuid, u, encode(digest($1::uuid::text || ':' || u::text || ':' || clock_timestamp()::text, 'sha256'), 'hex'),
+            $3::timestamptz + interval '2 hours', upper(substr(md5(gen_random_uuid()::text), 1, 10))
        FROM unnest($2::uuid[]) AS u`,
     [booking.id, players, lobby.start_at],
   );

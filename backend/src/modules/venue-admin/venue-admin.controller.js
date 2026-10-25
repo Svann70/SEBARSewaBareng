@@ -8,6 +8,7 @@ import {
   idSchema,
   patchCourtSchema,
   patchSlotSchema,
+  scanSchema,
   slotsQuerySchema,
 } from './venue-admin.schema.js';
 import * as service from './venue-admin.service.js';
@@ -56,4 +57,12 @@ export async function createSlot(req, res) {
 export async function updateSlot(req, res) {
   const { id } = idSchema.parse(req.params);
   res.json(venueSlotDto(await service.updateSlot(req.user.id, id, patchSlotSchema.parse(req.body))));
+}
+
+export async function scanCheckin(req, res) {
+  res.json(await service.scanCheckin(req.user.id, scanSchema.parse(req.body).code));
+}
+
+export async function listCheckins(req, res) {
+  res.json({ items: await service.listCheckins(req.user.id) });
 }
