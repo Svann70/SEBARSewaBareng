@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
+import '../../data/api.dart';
 import '../../data/state.dart';
 
 // ─── Jadwal ────────────────────────────────────────────────────────────────
@@ -377,13 +378,18 @@ class VenueScanTab extends StatefulWidget {
 
 class _VenueScanTabState extends State<VenueScanTab> {
   final _code = TextEditingController();
+  bool _busy = false;
   String? _result;
   String? _resultDetail;
-  final _history = <(String, String, bool)>[
-    ('SEB-4K2P', 'Raka · 19:00 Lapangan 1', true),
-    ('SEB-9QX1', 'Ayu · 08:00 Lapangan 1', true),
-    ('SEB-3MZ7', 'Doni · sudah discan', false),
-  ];
+
+  /// (kode, keterangan, valid) — dari server, terbaru di atas.
+  final _history = <(String, String, bool)>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
 
   @override
   void dispose() {
@@ -391,26 +397,58 @@ class _VenueScanTabState extends State<VenueScanTab> {
     super.dispose();
   }
 
-  void _scan() {
-    final code = _code.text.trim().toUpperCase();
-    if (code == 'SEB-4K2P') {
+  String _who(Map<String, dynamic> t) {
+    final start = DateTime.tryParse(t['startAt'] as String? ?? '');
+    final time = start == null ? '' : ' · ${formatTime(wib(start))}';
+    return '${t['playerName'] ?? 'Pemain'} · ${t['roomTitle'] ?? ''}$time · ${t['courtName'] ?? ''}';
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final data = await api.get('/venue/checkins') as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        _history
+          ..clear()
+          ..addAll([
+            for (final t
+                in (data['items'] as List? ?? []).cast<Map<String, dynamic>>())
+              (formatCheckinCode(t['code'] as String? ?? ''), _who(t), true),
+          ]);
+      });
+    } catch (_) {
+      // Riwayat hanya pelengkap; validasi tetap bisa dipakai.
+    }
+  }
+
+  Future<void> _scan() async {
+    final code = _code.text.trim();
+    if (code.isEmpty || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final t =
+          await api.post('/venue/checkins/scan', body: {'code': code})
+              as Map<String, dynamic>;
+      if (!mounted) return;
       setState(() {
         _result = 'VALID';
-        _resultDetail = 'Raka Pratama · Badminton Jumat Malam';
-        _history.insert(0, (code, 'Raka · 19:00 Lapangan 1', true));
+        _resultDetail = _who(t);
+        _history.insert(0, (
+          formatCheckinCode(t['code'] as String? ?? code),
+          _who(t),
+          true,
+        ));
+        _code.clear();
       });
-    } else if (code == 'SEB-4K2P-DUP') {
+    } catch (error) {
+      if (!mounted) return;
       setState(() {
         _result = 'GAGAL';
-        _resultDetail = 'Tiket ini sudah pernah discan.';
-        _history.insert(0, (code, 'Sudah discan', false));
+        _resultDetail = apiMessage(error);
+        _history.insert(0, (code.toUpperCase(), apiMessage(error), false));
       });
-    } else {
-      setState(() {
-        _result = 'GAGAL';
-        _resultDetail = 'Kode tidak dikenal atau sudah kedaluwarsa.';
-        _history.insert(0, (code.isEmpty ? '—' : code, 'Tidak dikenal', false));
-      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -421,7 +459,10 @@ class _VenueScanTabState extends State<VenueScanTab> {
       children: [
         const Text('Scan tiket', style: T.h1),
         const SizedBox(height: 3),
-        Text('Validasi QR peserta saat masuk lapangan.', style: T.small),
+        Text(
+          'Ketik kode check-in di tiket pemain saat masuk lapangan.',
+          style: T.small,
+        ),
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -446,22 +487,26 @@ class _VenueScanTabState extends State<VenueScanTab> {
                 ),
               ),
               const SizedBox(height: 14),
-              const Text('Arahkan kamera ke QR peserta', style: T.small),
+              const Text(
+                'Scan kamera menyusul; pakai kode di bawah',
+                style: T.small,
+              ),
             ],
           ),
         ),
         const SizedBox(height: 14),
         LabeledField(
-          label: 'Input manual kode booking',
+          label: 'Kode check-in pemain',
           controller: _code,
-          hint: 'SEB-4K2P',
+          hint: 'A1B2C-3D4E5',
           prefixIcon: Icons.keyboard,
         ),
         const SizedBox(height: 12),
         SebarButton(
-          label: 'Validasi tiket',
+          label: _busy ? 'Memeriksa…' : 'Validasi tiket',
           icon: Icons.check_circle_outline,
-          onPressed: _scan,
+          busy: _busy,
+          onPressed: _busy ? null : _scan,
         ),
         if (_result != null) ...[
           const SizedBox(height: 14),
@@ -512,6 +557,8 @@ class _VenueScanTabState extends State<VenueScanTab> {
         const SizedBox(height: 20),
         const SectionHeader('Scan terakhir'),
         const SizedBox(height: 8),
+        if (_history.isEmpty)
+          const Text('Belum ada tiket yang discan.', style: T.small),
         for (final h in _history.take(4))
           Padding(
             padding: const EdgeInsets.only(bottom: 8),

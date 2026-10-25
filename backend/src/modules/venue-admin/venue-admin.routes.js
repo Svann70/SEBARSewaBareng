@@ -19,3 +19,5 @@ venueAdminRoutes.delete('/courts/:id/photos/:photoId', controller.deletePhoto);
 venueAdminRoutes.get('/slots', controller.listSlots);
 venueAdminRoutes.post('/slots', controller.createSlot);
 venueAdminRoutes.patch('/slots/:id', controller.updateSlot);
+venueAdminRoutes.get('/checkins', controller.listCheckins);
+venueAdminRoutes.post('/checkins/scan', controller.scanCheckin);

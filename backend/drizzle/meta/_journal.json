@@ -57,6 +57,13 @@
       "when": 1792932749261,
       "tag": "0007_member_kicked",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792938582044,
+      "tag": "0008_checkin_code",
+      "breakpoints": true
     }
   ]
 }

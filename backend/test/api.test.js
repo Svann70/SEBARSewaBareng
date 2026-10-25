@@ -711,6 +711,40 @@ describe('lobby (patungan v2)', { skip }, () => {
     assert.equal((await db.query('SELECT count(*)::int AS n FROM bookings WHERE lobby_id = $1', [lobby.id])).rows[0].n, 1, 'job does not close twice');
   });
 
+  test('check-in: the venue types the player code once, inside the time window', async () => {
+    const v = await venueWithCourt();
+    const slot = await v.slot(400_000);
+    const host = await player(500_000);
+    const lobby = (await createLobby(host, slot.id, 4)).body;
+    const a = await player(500_000);
+    await join(a, lobby);
+    await api('POST', `/lobbies/${lobby.id}/lock`, { token: host.token });
+    const ticket = (await api('GET', '/me/bookings', { token: a.token })).body.items[0];
+    assert.match(ticket.checkin.code, /^[0-9A-F]{10}$/);
+    assert.equal(ticket.checkin.status, 'PENDING');
+    const hostCode = (await api('GET', '/me/bookings', { token: host.token })).body.items[0].checkin.code;
+    assert.notEqual(hostCode, ticket.checkin.code, 'one code per player');
+    const scan = (code, admin = v.admin) => api('POST', '/venue/checkins/scan', { token: admin.token, body: { code } });
+    const pretty = `${ticket.checkin.code.slice(0, 5)}-${ticket.checkin.code.slice(5)}`.toLowerCase();
+
+    assert.equal((await scan(pretty)).body.error.code, 'TOO_EARLY', 'starts in 2 days');
+    await db.query(`UPDATE court_slots SET start_at = now() + interval '30 minutes', end_at = now() + interval '90 minutes' WHERE id = $1`, [slot.id]);
+    const other = await venueWithCourt();
+    assert.equal((await scan(ticket.checkin.code, other.admin)).status, 404, "another venue cannot check it in");
+    assert.equal((await api('POST', '/venue/checkins/scan', { token: a.token, body: { code: ticket.checkin.code } })).status, 403, 'players cannot scan');
+    const ok = await scan(pretty);
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal(ok.body.status, 'SCANNED');
+    assert.equal(ok.body.roomTitle, 'Main bareng');
+    const again = await scan(ticket.checkin.code);
+    assert.equal(again.body.error.code, 'ALREADY_SCANNED');
+    assert.equal((await scan('XXXXXXXXXX')).status, 404);
+    assert.equal((await api('GET', '/me/bookings', { token: a.token })).body.items[0].checkin.status, 'SCANNED');
+    assert.equal((await api('GET', '/venue/checkins', { token: v.admin.token })).body.items[0].code, ticket.checkin.code);
+    await db.query(`UPDATE checkins SET status = 'PENDING', token_expires_at = now() - interval '1 minute' WHERE code = $1`, [hostCode]);
+    assert.equal((await scan(hostCode)).body.error.code, 'EXPIRED');
+  });
+
   test('ledger always reconciles with wallet balances', async () => {
     const { rows } = await db.query(`
       SELECT w.id FROM wallets w LEFT JOIN wallet_ledger l ON l.wallet_id = w.id

@@ -69,8 +69,9 @@ class TicketScreen extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    booking.code,
+                  const Text('Kode check-in', style: T.caption),
+                  SelectableText(
+                    formatCheckinCode(booking.token),
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -80,7 +81,8 @@ class TicketScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 2),
                   const Text(
-                    'Tunjukkan ke petugas venue. Satu QR untuk kamu saja.',
+                    'Tunjukkan QR atau sebutkan kode ini ke petugas venue. '
+                    'Kode ini hanya untukmu.',
                     textAlign: TextAlign.center,
                     style: T.caption,
                   ),
@@ -128,13 +130,13 @@ class TicketScreen extends ConsumerWidget {
                     children: [
                       Icon(Icons.shield_outlined, size: 16, color: C.primary),
                       SizedBox(width: 6),
-                      Expanded(child: Text('Token sekali pakai', style: T.h3)),
+                      Expanded(child: Text('Kode sekali pakai', style: T.h3)),
                     ],
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'QR hanya berlaku sekali dan kedaluwarsa 2 jam setelah '
-                    'jadwal mulai. Scan ulang akan ditolak.',
+                    'Bisa dipakai mulai 1 jam sebelum main sampai 2 jam setelah '
+                    'jadwal mulai, sekali saja. Pakai ulang akan ditolak.',
                     style: T.small,
                   ),
                   const SizedBox(height: 12),
@@ -154,25 +156,13 @@ class TicketScreen extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
+                        // Status dari server; venue yang memvalidasi kode.
                         child: SebarButton(
                           label: booking.checkedIn
-                              ? 'Sudah scan'
-                              : 'Simulasi scan',
+                              ? 'Sudah check-in'
+                              : 'Belum check-in',
                           height: 44,
-                          onPressed: booking.checkedIn
-                              ? null
-                              : () {
-                                  ref
-                                      .read(bookingsProvider.notifier)
-                                      .checkIn(booking.id);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Check-in valid. Selamat bermain!',
-                                      ),
-                                    ),
-                                  );
-                                },
+                          onPressed: null,
                         ),
                       ),
                     ],

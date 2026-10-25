@@ -8,6 +8,8 @@ const name = z.string().trim().min(2).max(60);
 export const idSchema = z.object({ id: z.uuid() });
 export const photoParamsSchema = z.object({ id: z.uuid(), photoId: z.uuid() });
 export const dateSchema = z.object({ date: z.iso.date() });
+// Ticket check-in code as typed by the venue; dashes and spaces are ignored.
+export const scanSchema = z.object({ code: z.string().trim().min(1).max(40) });
 
 // Venue pertama untuk akun VENUE_ADMIN yang belum punya venue (mis. akun
 // lama yang role-nya diubah manual). Batasan sama dengan venueSchema di auth.

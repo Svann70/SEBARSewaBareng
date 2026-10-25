@@ -246,3 +246,64 @@ export async function deletePhoto(ownerId, courtId, photoId) {
   if (!rows[0]) throw new AppError(404, 'NOT_FOUND', 'Foto tidak ditemukan.');
   await deleteObject(rows[0].path);
 }
+
+// ── Check-in (code on the player's ticket, typed by the venue) ───────────────
+
+const CHECKIN_SELECT = `
+  SELECT ci.id, ci.code, ci.status, ci.scanned_at, u.full_name, l.title, ct.name AS court_name, s.start_at, s.end_at
+    FROM checkins ci
+    JOIN bookings b ON b.id = ci.booking_id
+    JOIN lobbies l ON l.id = b.lobby_id
+    JOIN court_slots s ON s.id = b.slot_id
+    JOIN courts ct ON ct.id = s.court_id
+    JOIN venues v ON v.id = ct.venue_id
+    JOIN users u ON u.id = ci.user_id`;
+
+const checkinDto = (r) => ({
+  code: r.code,
+  status: r.status,
+  scannedAt: r.scanned_at,
+  playerName: r.full_name,
+  roomTitle: r.title,
+  courtName: r.court_name,
+  startAt: r.start_at,
+  endAt: r.end_at,
+});
+
+// Only the venue that owns the court can check a ticket in. An unknown code and another venue's
+// code get the same answer, so codes of other venues cannot be probed.
+export async function scanCheckin(ownerId, rawCode) {
+  const code = rawCode.toUpperCase().replace(/[^0-9A-Z]/g, '');
+  return tx(async (c) => {
+    const { rows } = await c.query(
+      `${CHECKIN_SELECT.replace('SELECT ci.id', `SELECT now() < s.start_at - interval '1 hour' AS too_early,
+                                                       ci.token_expires_at <= now() AS expired, ci.id`)}
+        WHERE ci.code = $1 AND v.owner_id = $2
+        FOR UPDATE OF ci`,
+      [code, ownerId],
+    );
+    const t = rows[0];
+    if (!t) throw new AppError(404, 'NOT_FOUND', 'Kode tidak dikenal.');
+    if (t.status === 'SCANNED') {
+      throw new AppError(409, 'ALREADY_SCANNED', 'Tiket ini sudah discan.', checkinDto(t));
+    }
+    if (t.too_early) {
+      throw new AppError(422, 'TOO_EARLY', 'Belum waktunya. Check-in dibuka 1 jam sebelum main.', checkinDto(t));
+    }
+    if (t.expired) throw new AppError(410, 'EXPIRED', 'Tiket sudah kedaluwarsa.', checkinDto(t));
+    const { rows: done } = await c.query(
+      `UPDATE checkins SET status = 'SCANNED', scanned_by = $2, scanned_at = now() WHERE id = $1 RETURNING scanned_at`,
+      [t.id, ownerId],
+    );
+    return checkinDto({ ...t, status: 'SCANNED', scanned_at: done[0].scanned_at });
+  });
+}
+
+// Latest check-ins at this owner's venues, newest first.
+export async function listCheckins(ownerId) {
+  const { rows } = await query(
+    `${CHECKIN_SELECT} WHERE v.owner_id = $1 AND ci.status = 'SCANNED' ORDER BY ci.scanned_at DESC LIMIT 30`,
+    [ownerId],
+  );
+  return rows.map(checkinDto);
+}
