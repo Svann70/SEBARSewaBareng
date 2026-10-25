@@ -10,4 +10,5 @@ lobbiesRoutes.post('/', requireRole('PLAYER'), controller.create);
 lobbiesRoutes.get('/:id', controller.detail);
 lobbiesRoutes.post('/:id/join', requireRole('PLAYER'), controller.join);
 lobbiesRoutes.delete('/:id/members/me', controller.leave);
-lobbiesRoutes.delete('/:id', controller.cancel);
+lobbiesRoutes.delete('/:id/members/:userId', controller.kick);
+lobbiesRoutes.delete('/:id', controller.disband);

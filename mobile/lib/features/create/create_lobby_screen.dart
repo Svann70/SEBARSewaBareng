@@ -302,11 +302,11 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
       ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
-    final perPerson = pricePerPerson(pick.price, _quota);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Room dibuat. ${rupiah(perPerson)} dikunci sebagai host.',
+          'Room dibuat. ${rupiah(pick.price)} ditahan sebagai jaminan; '
+          'sisanya kembali saat join ditutup.',
         ),
       ),
     );
@@ -697,11 +697,11 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
           ),
         ),
         const SizedBox(height: 22),
-        const _Label('Jumlah orang'),
+        const _Label('Maksimal orang'),
         const SizedBox(height: 4),
         Text(
-          'Termasuk kamu. Maksimal $capacity orang untuk '
-          '${_sportToPlay.label}. Harga per orang ikut berubah.',
+          'Termasuk kamu. Batas lapangan $capacity orang untuk '
+          '${_sportToPlay.label}. Harga di bawah = per orang kalau penuh.',
           style: T.small,
         ),
         const SizedBox(height: 10),
@@ -739,12 +739,13 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
             onTap: () {},
           ),
         const SizedBox(height: 22),
-        const _Label('Batas kumpul'),
+        const _Label('Join ditutup'),
         const SizedBox(height: 8),
         _DeadlineBox(start: pick.start),
         const SizedBox(height: 8),
         const Text(
-          'Kalau absen belum penuh, room batal dan semua dana dilepas.',
+          'Room tetap jalan berapa pun yang ikut. Biaya dibagi rata ke semua '
+          'yang join; bubarkan room paling lambat H-1.',
           style: T.caption,
         ),
       ],
@@ -858,7 +859,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
             children: [
               Expanded(
                 child: Text(
-                  '${rupiah(pick.price)} ÷ $_quota orang',
+                  'Kalau penuh $_quota orang',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.caption,
@@ -884,7 +885,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
           SebarButton(
             label: _busy
                 ? 'Membuat room…'
-                : 'Buat room • kunci ${rupiah(perPerson)}',
+                : 'Buat room • jaminan ${rupiah(pick.price)}',
             height: 50,
             radius: 999,
             busy: _busy,
@@ -1774,9 +1775,9 @@ class _DeadlineBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final deadline = start.subtract(const Duration(hours: 6));
+    final deadline = start.subtract(const Duration(minutes: 30));
     final label =
-        '6 jam sebelum main • ${_dayName(wib(deadline))} ${formatTime(wib(deadline))}';
+        '30 menit sebelum main • ${_dayName(wib(deadline))} ${formatTime(wib(deadline))}';
 
     return Container(
       height: 52,

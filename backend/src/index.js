@@ -1,8 +1,8 @@
 import { config } from './config/env.js';
 import { createApp } from './app.js';
-import { pool, query, tx } from './db/pool.js';
+import { pool, query } from './db/pool.js';
 import { purgeExpiredRefreshTokens } from './modules/auth/auth.service.js';
-import { expireStaleLobbies as expireJob } from './modules/lobbies/membership.service.js';
+import { runLobbyJobs } from './modules/lobbies/jobs.js';
 
 const EXPIRE_EVERY_MS = 60_000;
 
@@ -17,10 +17,10 @@ const server = createApp().listen(config.port, () => {
   console.log(JSON.stringify({ level: 'info', msg: `SEBAR API on :${config.port}` }));
 });
 
-// Simple in-process scheduler: BR-3.4 lobby expiry (DB function expire_stale_lobbies) + refresh token cleanup.
+// Simple in-process scheduler: patungan jobs (reminders, join close, fine payout) + refresh token cleanup.
 async function runJobs() {
   try {
-    await tx(expireJob).catch((err) => (err.code === '40P01' ? tx(expireJob) : Promise.reject(err)));
+    await runLobbyJobs();
     await purgeExpiredRefreshTokens();
   } catch (err) {
     console.error(JSON.stringify({ level: 'error', msg: 'scheduled job failed', error: err.message }));

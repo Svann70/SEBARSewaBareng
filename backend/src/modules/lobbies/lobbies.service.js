@@ -3,7 +3,7 @@ import { AppError } from '../../lib/errors.js';
 import { onDateWib } from '../../lib/sql.js';
 import { coverPhoto } from '../venues/courts.shared.js';
 import { clearFreeSlots } from '../venues/slots.shared.js';
-import { cancelLobby, JOIN_CUTOFF_HOURS, joinLobby, leaveLobby } from './membership.service.js';
+import { addHost, disbandLobby, JOIN_CLOSE_MINUTES, joinCost, joinLobby, kickMember, leaveLobby, shareOf } from './patungan.service.js';
 
 export const PAGE_SIZE = 20;
 const MAX_ACTIVE_HOSTED = 3;
@@ -11,7 +11,9 @@ const MAX_ACTIVE_HOSTED = 3;
 const LOBBY_SELECT = `
   SELECT l.*, s.start_at, s.end_at, c.name AS court_name, COALESCE(l.sport_type, c.sport_type) AS sport_type,
          ${coverPhoto('c')} AS court_photo, v.id AS venue_id, v.name AS venue_name, v.city,
-         (SELECT count(*)::int FROM lobby_members m WHERE m.lobby_id = l.id AND m.status IN ('HOLDING', 'CONFIRMED')) AS joined
+         (SELECT count(*)::int FROM lobby_members m WHERE m.lobby_id = l.id AND m.status = 'ACTIVE') AS joined,
+         (SELECT count(*)::int FROM lobby_members m WHERE m.lobby_id = l.id AND m.status IN ('ACTIVE', 'VACANT', 'ABSENT')) AS seats,
+         (SELECT count(*)::int FROM lobby_members m WHERE m.lobby_id = l.id AND m.status = 'VACANT') AS vacant
     FROM lobbies l
     JOIN court_slots s ON s.id = l.slot_id
     JOIN courts c ON c.id = s.court_id
@@ -43,11 +45,40 @@ export async function getById(id) {
   return rows[0];
 }
 
+// Share now (per seat) and what joining would cost, from the seat counts in LOBBY_SELECT.
+export function shares(r) {
+  const price = Number(r.price_total);
+  const share = shareOf(price, r.seats);
+  // The creator's seat also pays the rounding remainder.
+  return { share, hostShare: price - share * (r.seats - 1), joinCost: joinCost(price, r.seats, r.vacant, r.quota) };
+}
+
+// The viewer's own seat and phase in this room (null = not a member).
+export async function myMembership(lobbyId, userId) {
+  const { rows } = await query(
+    `SELECT m.status, m.role_in_lobby, m.hold_amount, m.share_at_join, m.fine_amount, m.free_until, m.protect_until,
+            CASE WHEN m.status <> 'ACTIVE' THEN m.status::text
+                 WHEN l.status <> 'OPEN' OR l.join_deadline <= now() THEN 'FINAL'
+                 WHEN m.user_id = l.creator_id THEN 'HOST'
+                 WHEN m.free_until > now() THEN 'FREE'
+                 WHEN m.protect_until > now()
+                      AND floor(l.price_total / (SELECT count(*) FROM lobby_members x
+                                                  WHERE x.lobby_id = l.id AND x.status IN ('ACTIVE', 'VACANT', 'ABSENT'))) > m.share_at_join
+                   THEN 'PROTECTED'
+                 ELSE 'LOCKED' END AS phase
+       FROM lobby_members m JOIN lobbies l ON l.id = m.lobby_id
+      WHERE m.lobby_id = $1 AND m.user_id = $2 AND m.status IN ('ACTIVE', 'VACANT', 'ABSENT', 'REPLACED')
+      ORDER BY m.joined_at DESC LIMIT 1`,
+    [lobbyId, userId],
+  );
+  return rows[0] ?? null;
+}
+
 export async function listMembers(lobbyId) {
   const { rows } = await query(
     `SELECT m.user_id, m.role_in_lobby, m.status, u.full_name, u.reliability_score
        FROM lobby_members m JOIN users u ON u.id = m.user_id
-      WHERE m.lobby_id = $1 AND m.status IN ('HOLDING', 'CONFIRMED') ORDER BY m.joined_at`,
+      WHERE m.lobby_id = $1 AND m.status IN ('ACTIVE', 'VACANT', 'ABSENT') ORDER BY m.joined_at`,
     [lobbyId],
   );
   return rows;
@@ -68,14 +99,15 @@ async function withBalanceDetails(fn, requiredSql, params) {
   }
 }
 
-// Creates the lobby and joins the host (with hold) in one transaction: no balance = no lobby.
+// Creates the room and holds 100% of the price from the host (guarantee) in one transaction:
+// no balance = no room.
 export async function create(hostId, input) {
-  const { slotId, courtId, startAt, hours, quota } = input;
+  const { slotId, courtId, startAt, hours } = input;
   const lobbyId = await withBalanceDetails(
     () => createTx(hostId, input),
     ...(slotId
-      ? ['SELECT ceil(price / $3) FROM court_slots WHERE id = $2', [hostId, slotId, quota]]
-      : [`SELECT ceil(${RATE_SQL} * $5 / $3) FROM courts c WHERE c.id = $2`, [hostId, courtId, quota, startAt, hours]]),
+      ? ['SELECT price FROM court_slots WHERE id = $2', [hostId, slotId]]
+      : [`SELECT ${RATE_SQL} * $3 FROM courts c WHERE c.id = $2`, [hostId, courtId, hours, startAt]]),
   );
   return getById(lobbyId);
 }
@@ -138,14 +170,14 @@ function createTx(hostId, { slotId, courtId, startAt, hours, sport, title, quota
     // Capacity is per sport on multi-purpose courts; no sport = the court's main sport.
     const found = await c.query(
       `SELECT s.*, COALESCE(cs.capacity, c.capacity) AS capacity, cs.sport_type IS NOT NULL AS sport_ok, c.sport_type AS main_sport,
-              s.start_at - make_interval(hours => $2) AS join_deadline,
-              s.start_at - make_interval(hours => $2) <= now() AS too_late
+              s.start_at - make_interval(mins => $2) AS join_deadline,
+              s.start_at - make_interval(mins => $2) <= now() AS too_late
          FROM court_slots s
          JOIN courts c ON c.id = s.court_id AND c.status = 'ACTIVE'
          JOIN venues v ON v.id = c.venue_id AND v.status = 'ACTIVE'
          LEFT JOIN court_sports cs ON cs.court_id = c.id AND cs.sport_type = COALESCE($3::sport_type, c.sport_type)
         WHERE s.id = $1 AND NOT s.released FOR UPDATE OF s`,
-      [id, JOIN_CUTOFF_HOURS, sport ?? null],
+      [id, JOIN_CLOSE_MINUTES, sport ?? null],
     );
     const slot = found.rows[0];
     if (!slot) throw new AppError(404, 'NOT_FOUND', 'Slot tidak ditemukan.');
@@ -154,13 +186,13 @@ function createTx(hostId, { slotId, courtId, startAt, hours, sport, title, quota
     if (quota > slot.capacity) throw new AppError(422, 'VALIDATION_ERROR', `Kuota maksimal lapangan ini ${slot.capacity}.`);
 
     if (slot.too_late) {
-      throw new AppError(422, 'VALIDATION_ERROR', `Lobby harus dibuat paling lambat ${JOIN_CUTOFF_HOURS} jam sebelum main.`);
+      throw new AppError(422, 'VALIDATION_ERROR', `Room harus dibuat paling lambat ${JOIN_CLOSE_MINUTES} menit sebelum main.`);
     }
     let lobby;
     try {
       const { rows } = await c.query(
-        `INSERT INTO lobbies (slot_id, host_id, title, min_reliability, quota, price_total, join_deadline, sport_type)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        `INSERT INTO lobbies (slot_id, host_id, creator_id, title, min_reliability, quota, price_total, join_deadline, sport_type)
+         VALUES ($1, $2, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
         // Store the sport now: later edits to the court's sports must not relabel this room.
         [slot.id, hostId, title, minReliability, quota, slot.price, slot.join_deadline, sport ?? slot.main_sport],
       );
@@ -171,12 +203,23 @@ function createTx(hostId, { slotId, courtId, startAt, hours, sport, title, quota
       }
       throw err;
     }
-    await joinLobby(c, lobby.id, hostId, 'HOST');
+    await addHost(c, lobby, hostId);
     return lobby.id;
   });
 }
 
-export const join = (lobbyId, userId) =>
-  withBalanceDetails(() => tx((c) => joinLobby(c, lobbyId, userId)), 'SELECT price_per_person FROM lobbies WHERE id = $2', [userId, lobbyId]);
+export async function join(lobbyId, userId) {
+  try {
+    return await tx((c) => joinLobby(c, lobbyId, userId));
+  } catch (err) {
+    if (err.code !== 'P0001' || err.message !== 'SEBAR::INSUFFICIENT_AVAILABLE_BALANCE') throw err;
+    const lobby = await getById(lobbyId);
+    const { rows } = await query('SELECT balance - held_balance AS available FROM wallets WHERE user_id = $1', [userId]);
+    throw new AppError(409, 'INSUFFICIENT_AVAILABLE_BALANCE', 'Saldo tersedia tidak cukup.', {
+      required: shares(lobby).joinCost, available: rows[0].available,
+    });
+  }
+}
 export const leave = (lobbyId, userId) => tx((c) => leaveLobby(c, lobbyId, userId));
-export const cancel = (lobbyId, userId) => tx((c) => cancelLobby(c, lobbyId, userId));
+export const kick = (lobbyId, hostId, targetId) => tx((c) => kickMember(c, lobbyId, hostId, targetId));
+export const disband = (lobbyId, userId) => tx((c) => disbandLobby(c, lobbyId, userId));

@@ -43,6 +43,20 @@
       "when": 1792871302000,
       "tag": "0005_wallet_withdrawals",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792931278362,
+      "tag": "0006_patungan_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792932749261,
+      "tag": "0007_member_kicked",
+      "breakpoints": true
     }
   ]
 }
