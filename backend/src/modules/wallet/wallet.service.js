@@ -68,3 +68,99 @@ export async function listLedger(userId, page) {
   );
   return rows;
 }
+
+const withdrawalKey = (userId, key) => `WITHDRAWAL:${userId}:${key}`;
+
+function sameWithdrawalRequest(entry, request) {
+  if (
+    entry.amount !== String(request.amount) ||
+    entry.bank_code !== request.bankCode ||
+    entry.account_number !== request.accountNumber ||
+    entry.account_name !== request.accountName
+  ) {
+    throw new AppError(422, 'IDEMPOTENCY_KEY_REUSED', 'Idempotency-Key sudah dipakai untuk request lain.');
+  }
+  return { withdrawal: entry, created: false };
+}
+
+async function findWithdrawalByKey(key) {
+  const { rows } = await query(
+    'SELECT * FROM wallet_withdrawals WHERE idempotency_key = $1',
+    [key],
+  );
+  return rows[0];
+}
+
+export async function withdraw(userId, request, key) {
+  const namespacedKey = withdrawalKey(userId, key);
+  const existing = await findWithdrawalByKey(namespacedKey);
+  if (existing) return sameWithdrawalRequest(existing, request);
+
+  try {
+    const withdrawal = await tx(async (c) => {
+      const walletResult = await c.query(
+        'SELECT id, balance, held_balance FROM wallets WHERE user_id = $1 FOR UPDATE',
+        [userId],
+      );
+      const wallet = walletResult.rows[0];
+      if (!wallet) throw new AppError(404, 'WALLET_NOT_FOUND', 'Dompet tidak ditemukan.');
+      if (Number(wallet.balance) - Number(wallet.held_balance) < request.amount) {
+        throw new AppError(422, 'INSUFFICIENT_BALANCE', 'Saldo tersedia tidak mencukupi.');
+      }
+
+      const withdrawalResult = await c.query(
+        `INSERT INTO wallet_withdrawals
+          (wallet_id, amount, bank_code, account_number, account_name, idempotency_key)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [
+          wallet.id,
+          request.amount,
+          request.bankCode,
+          request.accountNumber,
+          request.accountName,
+          namespacedKey,
+        ],
+      );
+      const withdrawal = withdrawalResult.rows[0];
+      const updated = await c.query(
+        `UPDATE wallets
+         SET balance = balance - $2, version = version + 1
+         WHERE id = $1
+         RETURNING balance, held_balance`,
+        [wallet.id, request.amount],
+      );
+      await c.query(
+        `INSERT INTO wallet_ledger
+          (wallet_id, entry_type, amount, balance_after, held_after, ref_type, ref_id, idempotency_key)
+         VALUES ($1, 'PAYOUT', $2, $3, $4, 'WITHDRAWAL', $5, $6)`,
+        [
+          wallet.id,
+          request.amount,
+          updated.rows[0].balance,
+          updated.rows[0].held_balance,
+          withdrawal.id,
+          namespacedKey,
+        ],
+      );
+      return withdrawal;
+    });
+    return { withdrawal, created: true };
+  } catch (err) {
+    if (err.code === '23505' && err.constraint === 'wallet_withdrawals_idempotency_key_key') {
+      return sameWithdrawalRequest(await findWithdrawalByKey(namespacedKey), request);
+    }
+    throw err;
+  }
+}
+
+export async function listWithdrawals(userId, page) {
+  const { rows } = await query(
+    `SELECT ww.* FROM wallet_withdrawals ww
+     JOIN wallets w ON w.id = ww.wallet_id
+     WHERE w.user_id = $1
+     ORDER BY ww.created_at DESC, ww.id
+     LIMIT $2 OFFSET $3`,
+    [userId, PAGE_SIZE, (page - 1) * PAGE_SIZE],
+  );
+  return rows;
+}

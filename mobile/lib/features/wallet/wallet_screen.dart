@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/money.dart';
@@ -84,13 +85,7 @@ class WalletScreen extends ConsumerWidget {
                   child: GhostButton(
                     label: 'Tarik dana',
                     height: 46,
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Penarikan tersedia setelah jadwal selesai.',
-                        ),
-                      ),
-                    ),
+                    onPressed: () => _withdraw(context, ref),
                   ),
                 ),
               ],
@@ -273,6 +268,131 @@ class WalletScreen extends ConsumerWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(error ?? '${rupiah(amount)} ditambahkan ke saldo.'),
+      ),
+    );
+  }
+
+  Future<void> _withdraw(BuildContext context, WidgetRef ref) async {
+    final amountController = TextEditingController();
+    final accountController = TextEditingController();
+    final nameController = TextEditingController();
+    var bankCode = 'BCA';
+    final available = ref.read(walletProvider).available;
+
+    final result = await showModalBottomSheet<(int, String, String, String)>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setState) => SheetWrap(
+          title: 'Tarik dana',
+          children: [
+            Text(
+              'Saldo tersedia ${rupiah(available)}. Minimal penarikan Rp10.000.',
+              style: T.caption,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: amountController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                labelText: 'Nominal penarikan',
+                prefixText: 'Rp ',
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: bankCode,
+              decoration: const InputDecoration(labelText: 'Bank tujuan'),
+              items: const [
+                DropdownMenuItem(value: 'BCA', child: Text('BCA')),
+                DropdownMenuItem(value: 'BNI', child: Text('BNI')),
+                DropdownMenuItem(value: 'BRI', child: Text('BRI')),
+                DropdownMenuItem(value: 'MANDIRI', child: Text('Bank Mandiri')),
+                DropdownMenuItem(value: 'CIMB', child: Text('CIMB Niaga')),
+                DropdownMenuItem(
+                  value: 'BSI',
+                  child: Text('Bank Syariah Indonesia'),
+                ),
+              ],
+              onChanged: (value) =>
+                  setState(() => bankCode = value ?? bankCode),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: accountController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(labelText: 'Nomor rekening'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameController,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Nama pemilik rekening',
+                hintText: 'Sesuai data bank',
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Permintaan akan diproses maksimal 1 hari kerja. Pastikan '
+              'rekening dan nama penerima sudah benar.',
+              style: T.caption,
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: SebarButton(
+                label: 'Ajukan penarikan',
+                onPressed: () {
+                  final amount = int.tryParse(amountController.text);
+                  final account = accountController.text.trim();
+                  final name = nameController.text.trim();
+                  if (amount == null ||
+                      amount < 10000 ||
+                      amount > available ||
+                      account.length < 6 ||
+                      name.length < 2) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Periksa nominal dan data rekening.'),
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.pop(sheetContext, (
+                    amount,
+                    bankCode,
+                    account,
+                    name,
+                  ));
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    amountController.dispose();
+    accountController.dispose();
+    nameController.dispose();
+    if (result == null || !context.mounted) return;
+
+    final error = await ref
+        .read(walletProvider.notifier)
+        .withdrawRemote(
+          amount: result.$1,
+          bankCode: result.$2,
+          accountNumber: result.$3,
+          accountName: result.$4,
+        );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error ?? '${rupiah(result.$1)} berhasil diajukan untuk penarikan.',
+        ),
       ),
     );
   }

@@ -759,6 +759,8 @@ server/
 | GET | `/me` | JWT | — | 200 profil + skor | 401 |
 | GET | `/me/wallet` | JWT | — | 200 balance, held, available | 401 |
 | POST | `/me/wallet/topup` | JWT | amount | 201 ledger TOPUP | 422 |
+| POST | `/me/wallet/withdrawals` | JWT | amount, bankCode, accountNumber, accountName, Idempotency-Key | 201 permintaan penarikan PENDING | 422 saldo/validasi |
+| GET | `/me/wallet/withdrawals` | JWT | page | 200 riwayat penarikan | |
 | GET | `/me/wallet/ledger` | JWT | page | 200 list | |
 | GET | `/venues` | JWT | city, sport | 200 list | |
 | GET | `/venues/:id/slots` | JWT | date | 200 list | |

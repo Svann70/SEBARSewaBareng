@@ -274,6 +274,24 @@ class ApiClient {
     headers: {'Idempotency-Key': idempotencyKey},
   );
 
+  Future<dynamic> withdraw({
+    required int amount,
+    required String bankCode,
+    required String accountNumber,
+    required String accountName,
+    required String idempotencyKey,
+  }) => _send(
+    'POST',
+    '/me/wallet/withdrawals',
+    body: {
+      'amount': amount,
+      'bankCode': bankCode,
+      'accountNumber': accountNumber,
+      'accountName': accountName,
+    },
+    headers: {'Idempotency-Key': idempotencyKey},
+  );
+
   // ── Transport ───────────────────────────────────────────────────────────
 
   Future<dynamic> _send(

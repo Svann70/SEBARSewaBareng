@@ -1281,7 +1281,7 @@ class WalletEntry {
     this.refId,
   });
 
-  final String type; // TOPUP, HOLD, RELEASE, CAPTURE, PENALTY
+  final String type; // TOPUP, HOLD, RELEASE, CAPTURE, PAYOUT, PENALTY
   final int amount; // negatif = keluar
   final String label;
   final DateTime at;
@@ -1300,6 +1300,7 @@ extension WalletEntryX on WalletEntry {
     'RELEASE' => 'Dana dilepas',
     'CAPTURE' => 'Pembayaran',
     'PENALTY' => 'Denda',
+    'PAYOUT' => 'Penarikan dana',
     _ => 'Mutasi',
   };
 }
@@ -1887,6 +1888,28 @@ class WalletNotifier extends Notifier<Wallet> {
       return apiMessage(error);
     }
   }
+
+  Future<String?> withdrawRemote({
+    required int amount,
+    required String bankCode,
+    required String accountNumber,
+    required String accountName,
+  }) async {
+    try {
+      final key = 'app-${DateTime.now().microsecondsSinceEpoch}';
+      await api.withdraw(
+        amount: amount,
+        bankCode: bankCode,
+        accountNumber: accountNumber,
+        accountName: accountName,
+        idempotencyKey: key,
+      );
+      await refresh();
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
 }
 
 WalletEntry _entryFromApi(Map<String, dynamic> json) {
@@ -1900,6 +1923,7 @@ WalletEntry _entryFromApi(Map<String, dynamic> json) {
       'HOLD' => 'Dana dikunci',
       'RELEASE' => 'Dana dilepas',
       'PENALTY' => 'Denda',
+      'PAYOUT' => 'Penarikan dana',
       _ => 'Mutasi',
     },
     at: _asDate(json['createdAt']),

@@ -159,6 +159,8 @@ Uang = integer rupiah. Tanggal = ISO 8601; filter `date` = tanggal WIB (`YYYY-MM
 | POST | `/me/password` | semua | currentPassword, newPassword (≥8, ≠ lama) | 204 (semua refresh token dicabut, semua perangkat wajib login ulang) | 401 password saat ini salah, 422 |
 | GET | `/me/wallet` | semua | - | 200 `{balance, held, available}` | |
 | POST | `/me/wallet/topup` | semua | amount (10.000–10.000.000), header `Idempotency-Key` | 201 entri ledger (200 bila key diulang) | 422, 422 `IDEMPOTENCY_KEY_REUSED`, 403 bila sandbox mati |
+| POST | `/me/wallet/withdrawals` | semua | amount (10.000–10.000.000), bankCode, accountNumber, accountName, header `Idempotency-Key` | 201 permintaan `PENDING` (200 bila key diulang) | 422 validasi/saldo, 422 `IDEMPOTENCY_KEY_REUSED` |
+| GET | `/me/wallet/withdrawals` | semua | page | 200 `{items, page}` dengan status `PENDING`/`PROCESSING`/`COMPLETED`/`REJECTED` | |
 | GET | `/me/wallet/ledger` | semua | page | 200 `{items, page}` | |
 | GET | `/me/bookings` | semua | - | 200 `{items}` | |
 | GET | `/venues` | semua | city?, sport? | 200 `{items}` + courts | |

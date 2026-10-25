@@ -1,5 +1,5 @@
 import { AppError } from '../../lib/errors.js';
-import { idempotencyKeySchema, pageSchema, topupSchema } from './wallet.schema.js';
+import { idempotencyKeySchema, pageSchema, topupSchema, withdrawalSchema } from './wallet.schema.js';
 import * as service from './wallet.service.js';
 
 function walletDto(w) {
@@ -10,12 +10,25 @@ function ledgerDto(e) {
   return {
     id: e.id,
     type: e.entry_type,
-    amount: e.amount,
+    amount: e.entry_type === 'PAYOUT' ? `-${e.amount}` : e.amount,
     balanceAfter: e.balance_after,
     heldAfter: e.held_after,
     refType: e.ref_type,
     refId: e.ref_id,
     createdAt: e.created_at,
+  };
+}
+
+function withdrawalDto(w) {
+  return {
+    id: w.id,
+    amount: w.amount,
+    bankCode: w.bank_code,
+    accountNumber: w.account_number,
+    accountName: w.account_name,
+    status: w.status,
+    createdAt: w.created_at,
+    processedAt: w.processed_at,
   };
 }
 
@@ -36,4 +49,22 @@ export async function topup(req, res) {
 export async function ledger(req, res) {
   const { page } = pageSchema.parse(req.query);
   res.json({ items: (await service.listLedger(req.user.id, page)).map(ledgerDto), page });
+}
+
+export async function withdraw(req, res) {
+  const request = withdrawalSchema.parse(req.body);
+  const key = req.get('Idempotency-Key');
+  if (!idempotencyKeySchema.safeParse(key).success) {
+    throw new AppError(422, 'VALIDATION_ERROR', 'Header Idempotency-Key wajib (8-100 karakter).');
+  }
+  const result = await service.withdraw(req.user.id, request, key);
+  res.status(result.created ? 201 : 200).json(withdrawalDto(result.withdrawal));
+}
+
+export async function withdrawals(req, res) {
+  const { page } = pageSchema.parse(req.query);
+  res.json({
+    items: (await service.listWithdrawals(req.user.id, page)).map(withdrawalDto),
+    page,
+  });
 }
