@@ -97,6 +97,15 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     return _Pick(day, hour, _hours);
   }
 
+  /// Cek apakah 1 jam setelah rentang saat ini masih kosong & dalam jam buka.
+  bool get _canAddHour {
+    final day = _courtDay;
+    final hour = _hour;
+    if (day == null || hour == null || _hours >= 8) return false;
+    final nextHour = hour + _hours;
+    return day.hours.any((h) => h.hour == nextHour && h.state == HourState.free);
+  }
+
   Sport get _sportToPlay {
     final court = _courtDay?.court;
     final sports = court?.allSports ?? const <CourtSport>[];
@@ -164,10 +173,38 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
 
   void _pickHour(CourtDay day, HourCell cell) {
     setState(() {
+      // Ketuk slot persis setelah rentang di lapangan yang sama -> tambah durasi
+      if (_courtId == day.court.id &&
+          _hour != null &&
+          cell.hour == _hour! + _hours &&
+          _hours < 8) {
+        _hours++;
+        return;
+      }
+      // Ketuk slot terakhir di dalam rentang (> 1 jam) -> kurangi durasi
+      if (_courtId == day.court.id &&
+          _hour != null &&
+          _hours > 1 &&
+          cell.hour == _hour! + _hours - 1) {
+        _hours--;
+        return;
+      }
       _courtId = day.court.id;
       _hour = cell.hour;
       _playSport = null;
       _quota = _quota.clamp(2, _capacity);
+      // Sesuaikan durasi bila melebihi jam kosong berturut-turut yang tersedia
+      var freeCount = 0;
+      for (var h = cell.hour; h < cell.hour + _hours; h++) {
+        if (day.hours.any((c) => c.hour == h && c.state == HourState.free)) {
+          freeCount++;
+        } else {
+          break;
+        }
+      }
+      if (freeCount > 0 && freeCount < _hours) {
+        _hours = freeCount;
+      }
     });
   }
 
@@ -458,14 +495,53 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
-              for (final h in const [1, 2, 3])
+              for (final h in const [1, 2, 3, 4])
                 Expanded(
                   child: Padding(
-                    padding: EdgeInsets.only(right: h == 3 ? 0 : 8),
+                    padding: EdgeInsets.only(right: h == 4 ? 0 : 8),
                     child: _ChoiceChip(
                       label: '$h jam',
                       selected: _hours == h,
                       onTap: () => setState(() => _hours = h),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Text(
+                'Opsi tambah lebih:',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: C.muted,
+                ),
+              ),
+              const SizedBox(width: 10),
+              _DurationStepper(
+                hours: _hours,
+                onDecrement: _hours > 1 ? () => setState(() => _hours--) : null,
+                onIncrement: _hours < 8 && (_hour == null || _canAddHour)
+                    ? () => setState(() => _hours++)
+                    : null,
+              ),
+              const Spacer(),
+              if (_hours > 4)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: C.primarySoft,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: C.primaryCheck),
+                  ),
+                  child: Text(
+                    '$_hours jam dipilih',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: C.primaryDeep,
                     ),
                   ),
                 ),
@@ -613,48 +689,86 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
 
   Widget _hourFooter(_Pick? pick) {
     return _FooterBar(
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+          if (pick != null) ...[
+            Row(
               children: [
+                const Icon(Icons.timer_outlined, size: 16, color: C.primary),
+                const SizedBox(width: 6),
+                const Text(
+                  'Durasi main:',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: C.ink,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _DurationStepper(
+                  hours: _hours,
+                  onDecrement: _hours > 1 ? () => setState(() => _hours--) : null,
+                  onIncrement: _hours < 8 && _canAddHour
+                      ? () => setState(() => _hours++)
+                      : null,
+                ),
+                const Spacer(),
                 Text(
-                  pick == null
-                      ? 'Pilih jam dulu'
-                      : '${pick.court.name} · '
-                            '${formatTime(wib(pick.start))}–${formatTime(wib(pick.end))}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  '${formatTime(wib(pick.start))}–${formatTime(wib(pick.end))}',
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: C.ink,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  pick == null
-                      ? 'Ketuk jam kosong di jadwal'
-                      : '${formatDate(wib(pick.start))} · ${pick.hours} jam · '
-                            '${rupiah(pick.price)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: T.caption,
-                ),
               ],
             ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 118,
-            child: SebarButton(
-              label: 'Lanjut',
-              height: 48,
-              radius: 999,
-              onPressed: pick == null ? null : () => _toStep3(pick),
-            ),
+            const SizedBox(height: 10),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      pick == null
+                          ? 'Pilih jam dulu'
+                          : '${pick.court.name} · ${pick.hours} jam',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: C.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      pick == null
+                          ? 'Ketuk jam kosong di jadwal'
+                          : '${formatDate(wib(pick.start))} · ${rupiah(pick.price)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: T.caption,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 118,
+                child: SebarButton(
+                  label: 'Lanjut',
+                  height: 48,
+                  radius: 999,
+                  onPressed: pick == null ? null : () => _toStep3(pick),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1111,6 +1225,64 @@ class _ChoiceChip extends StatelessWidget {
   }
 }
 
+class _DurationStepper extends StatelessWidget {
+  const _DurationStepper({
+    required this.hours,
+    this.onDecrement,
+    this.onIncrement,
+  });
+
+  final int hours;
+  final VoidCallback? onDecrement;
+  final VoidCallback? onIncrement;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 34,
+      decoration: BoxDecoration(
+        color: C.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: C.line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.remove, size: 15),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 30, minHeight: 32),
+            color: C.ink,
+            disabledColor: C.faint,
+            onPressed: onDecrement,
+            tooltip: 'Kurangi 1 jam',
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              '$hours jam',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: C.ink,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add, size: 15),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 30, minHeight: 32),
+            color: C.primary,
+            disabledColor: C.faint,
+            onPressed: onIncrement,
+            tooltip: 'Tambah 1 jam',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Legend extends StatelessWidget {
   const _Legend();
 
@@ -1194,7 +1366,7 @@ class _VenueSummary extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   '${formatDate(wib(pick.start))} • '
-                  '${formatTime(wib(pick.start))}–${formatTime(wib(pick.end))}',
+                  '${formatTime(wib(pick.start))}–${formatTime(wib(pick.end))} (${pick.hours} jam)',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: T.small,
