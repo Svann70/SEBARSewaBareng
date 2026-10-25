@@ -18,7 +18,7 @@ export const createSchema = z
     slotId: z.uuid().optional(),
     courtId: z.uuid().optional(),
     startAt: z.iso.datetime({ offset: true }).optional(),
-    hours: z.number().int().min(1).max(3).optional(),
+    hours: z.number().int().min(1).max(8).optional(),
     sport: z.enum(SPORTS).optional(),
     title: z.string().trim().min(3).max(100),
     quota: z.number().int().min(2).max(30),
