@@ -18,6 +18,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => ref.read(notificationsProvider.notifier).refresh());
+  }
+
+  @override
   Widget build(BuildContext context) {
     final filter = ref.watch(filterProvider);
     final lobbies = ref.watch(filteredLobbiesProvider);
@@ -33,6 +39,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           await Future.wait([
             ref.read(bookingsProvider.notifier).refresh(),
             ref.read(lobbiesProvider.notifier).refresh(),
+            ref.read(notificationsProvider.notifier).refresh(),
           ]);
         },
         child: ListView(
@@ -41,6 +48,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             _Greeting(
               name: user?.fullName ?? 'Raka',
               onCommunity: () => context.push('/community'),
+              unread: ref.watch(notificationsProvider).unread,
+              onNotifications: () => context.push('/notifications'),
             ),
             const SizedBox(height: 14),
             const FadeSlideIn(child: _PromoCarousel()),
@@ -195,10 +204,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 }
 
 class _Greeting extends StatelessWidget {
-  const _Greeting({required this.name, required this.onCommunity});
+  const _Greeting({
+    required this.name,
+    required this.onCommunity,
+    required this.unread,
+    required this.onNotifications,
+  });
 
   final String name;
   final VoidCallback onCommunity;
+  final int unread;
+  final VoidCallback onNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -214,6 +230,20 @@ class _Greeting extends StatelessWidget {
               Text(formatLongDate(DateTime.now()), style: T.small),
             ],
           ),
+        ),
+        IconButton(
+          onPressed: onNotifications,
+          tooltip: unread > 0 ? '$unread notifikasi baru' : 'Notifikasi',
+          icon: Badge(
+            isLabelVisible: unread > 0,
+            label: Text('$unread'),
+            child: const Icon(
+              Icons.notifications_none,
+              size: 21,
+              color: C.faint,
+            ),
+          ),
+          visualDensity: VisualDensity.compact,
         ),
         IconButton(
           onPressed: onCommunity,

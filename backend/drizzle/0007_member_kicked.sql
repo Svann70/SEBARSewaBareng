@@ -1,0 +1,1 @@
+ALTER TABLE "lobby_members" ADD COLUMN IF NOT EXISTS "kicked" boolean DEFAULT false NOT NULL;

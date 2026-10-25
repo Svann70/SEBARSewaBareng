@@ -1196,11 +1196,57 @@ extension LobbyAccessX on LobbyAccess {
 }
 
 class Member {
-  const Member({required this.name, this.isMe = false, this.isHost = false});
+  const Member({
+    required this.name,
+    this.isMe = false,
+    this.isHost = false,
+    this.userId,
+    this.status = 'ACTIVE',
+  });
 
   final String name;
   final bool isMe;
   final bool isHost;
+  final String? userId;
+
+  /// ACTIVE, VACANT (keluar, menunggu pengganti) atau ABSENT (sudah bayar, tidak main).
+  final String status;
+
+  bool get isActive => status == 'ACTIVE';
+}
+
+/// Kursiku di room (patungan v2). [phase]: FREE, LOCKED, PROTECTED, HOST, FINAL,
+/// atau status kursi bila sudah keluar (VACANT, ABSENT, REPLACED).
+class MySeat {
+  const MySeat({
+    required this.status,
+    required this.phase,
+    required this.holdAmount,
+    required this.shareAtJoin,
+    required this.fineAmount,
+    this.freeUntil,
+    this.protectUntil,
+  });
+
+  final String status;
+  final String phase;
+  final int holdAmount;
+  final int shareAtJoin;
+  final int fineAmount;
+  final DateTime? freeUntil;
+  final DateTime? protectUntil;
+
+  factory MySeat.fromJson(Map<String, dynamic> json) => MySeat(
+    status: json['status'] as String? ?? 'ACTIVE',
+    phase: json['phase'] as String? ?? 'LOCKED',
+    holdAmount: _asInt(json['holdAmount']),
+    shareAtJoin: _asInt(json['shareAtJoin']),
+    fineAmount: _asInt(json['fineAmount']),
+    freeUntil: json['freeUntil'] == null ? null : _asDate(json['freeUntil']),
+    protectUntil: json['protectUntil'] == null
+        ? null
+        : _asDate(json['protectUntil']),
+  );
 }
 
 enum LobbyStatus { open, filled, confirmed, expired, cancelled }
@@ -1224,11 +1270,32 @@ class Lobby {
     this.access = LobbyAccess.open,
     this.secret,
     this.photoUrl,
+    this.serverShare,
+    this.serverJoinCost,
+    this.hostShare,
+    this.seats,
+    this.vacant = 0,
+    this.mine,
   });
 
   final String id;
   final String title;
   final Sport sport;
+
+  /// Patungan v2 dari server: porsi per kursi sekarang dan biaya join sekarang
+  /// (null = penuh). Null di data contoh lokal.
+  final int? serverShare;
+  final int? serverJoinCost;
+
+  /// Porsi kursi host (porsi + receh); juga besar denda kalau host membubarkan.
+  final int? hostShare;
+
+  /// Kursi berbayar (aktif + kosong + tidak main) dan kursi yang menunggu pengganti.
+  final int? seats;
+  final int vacant;
+
+  /// Kursiku; null = bukan anggota (atau data belum dimuat).
+  final MySeat? mine;
 
   /// Foto sampul lapangan; null = belum ada foto.
   final String? photoUrl;
@@ -1248,14 +1315,27 @@ class Lobby {
   final LobbyAccess access;
   final String? secret;
 
-  int get pricePerPerson => pricePerPersonOf(priceTotal, quota);
-  int get joined => members.length;
-  int get remaining => quota - joined;
-  bool get isFull => remaining <= 0;
-  bool get joinedByMe => members.any((m) => m.isMe);
+  /// Biaya join sekarang (porsi kursi berikutnya); data lokal: dibagi kuota.
+  int get pricePerPerson =>
+      serverJoinCost ?? serverShare ?? pricePerPersonOf(priceTotal, quota);
+
+  /// Porsi per kursi saat ini.
+  int get share => serverShare ?? pricePerPersonOf(priceTotal, quota);
+  int get joined => members.where((m) => m.isActive).length;
+  int get remaining => quota - (seats ?? joined) + vacant;
+  bool get isFull => seats != null ? serverJoinCost == null : remaining <= 0;
+  bool get joinedByMe =>
+      mine?.status == 'ACTIVE' ||
+      (mine == null && members.any((m) => m.isMe && m.isActive));
   Duration get untilStart => start.difference(DateTime.now());
 
   Lobby copyWith({List<Member>? members, LobbyStatus? status}) => Lobby(
+    serverShare: serverShare,
+    serverJoinCost: serverJoinCost,
+    hostShare: hostShare,
+    seats: seats,
+    vacant: vacant,
+    mine: mine,
     id: id,
     title: title,
     sport: sport,
@@ -1689,22 +1769,53 @@ class LobbiesNotifier extends Notifier<List<Lobby>> {
     }
   }
 
-  Future<String?> leaveRemote(String id) async {
+  /// Keluar dari room. Hasil: (pesan sukses, error); tepat satu yang terisi.
+  Future<(String?, String?)> leaveRemote(String id) => _mutate(id, () async {
+    final r = _asMap(await api.delete('/lobbies/$id/members/me'));
+    final refund = _asInt(r['refund']);
+    return switch (r['phase']) {
+      'FREE' || 'PROTECTED' => 'Keluar. ${rupiah(refund)} kembali penuh.',
+      'LOCKED' =>
+        'Kursimu menunggu pengganti. Kalau terisi, dana kembali '
+            'dikurangi ${rupiah(_asInt(r['fineIfReplaced']))}.',
+      'HOST_MATCH_DAY' => 'Kamu keluar. Hak host pindah ke anggota lain.',
+      _ => 'Kamu keluar. Dana tidak dikembalikan.',
+    };
+  });
+
+  /// Host membubarkan room (sampai H-1).
+  Future<(String?, String?)> disbandRemote(String id) => _mutate(id, () async {
+    final r = _asMap(await api.delete('/lobbies/$id'));
+    final fine = _asInt(r['fine']);
+    return fine == 0
+        ? 'Room dibubarkan tanpa denda. Semua dana kembali.'
+        : 'Room dibubarkan. Denda ${rupiah(fine)} dibagi ke anggota '
+              'dan venue.';
+  });
+
+  /// Host mengeluarkan anggota (refund penuh ke anggota itu).
+  Future<(String?, String?)> kickRemote(String id, String userId) =>
+      _mutate(id, () async {
+        await api.delete('/lobbies/$id/members/$userId');
+        return 'Anggota dikeluarkan dan dananya dikembalikan.';
+      });
+
+  Future<(String?, String?)> _mutate(
+    String id,
+    Future<String> Function() call,
+  ) async {
     try {
-      final lobby = byId(id);
-      if (lobby.isHost) {
-        await api.delete('/lobbies/$id');
-      } else {
-        await api.delete('/lobbies/$id/members/me');
-      }
+      final message = await call();
       await Future.wait([
-        refresh(),
+        // Daftar dulu, baru detail: detail (kursiku, nama anggota) tidak boleh
+        // tertimpa daftar yang tidak membawa data itu.
+        refresh().then((_) => loadDetail(id)),
         ref.read(walletProvider.notifier).refresh(),
         ref.read(bookingsProvider.notifier).refresh(),
       ]);
-      return null;
+      return (message, null);
     } catch (error) {
-      return apiMessage(error);
+      return (null, apiMessage(error));
     }
   }
 
@@ -1748,6 +1859,8 @@ Member _memberFromApi(Map<String, dynamic> json) {
     name: json['fullName'] as String? ?? 'Pemain',
     isHost: role == 'HOST',
     isMe: userId != null && userId == api.userId,
+    userId: userId,
+    status: json['status'] as String? ?? 'ACTIVE',
   );
 }
 
@@ -1775,6 +1888,12 @@ Lobby lobbyFromApi(Map<String, dynamic> json, {List<Member>? members}) {
     status: _lobbyStatusFromApi(json['status'] as String?),
     isHost: json['hostId'] == api.userId,
     photoUrl: _asMap(json['court'])['photoUrl'] as String?,
+    serverShare: json['share'] == null ? null : _asInt(json['share']),
+    serverJoinCost: json['joinCost'] == null ? null : _asInt(json['joinCost']),
+    hostShare: json['hostShare'] == null ? null : _asInt(json['hostShare']),
+    seats: json['seats'] == null ? null : _asInt(json['seats']),
+    vacant: _asInt(json['vacant']),
+    mine: json['me'] == null ? null : MySeat.fromJson(_asMap(json['me'])),
   );
 }
 
@@ -2198,3 +2317,111 @@ Lobby? lobbyByInviteCode(List<Lobby> all, String code) {
   }
   return null;
 }
+
+/// ── Notifikasi in-app ─────────────────────────────────────────────────────
+
+class AppNotification {
+  const AppNotification({
+    required this.id,
+    required this.type,
+    required this.payload,
+    required this.createdAt,
+    required this.read,
+  });
+
+  final String id;
+  final String type;
+  final Map<String, dynamic> payload;
+  final DateTime createdAt;
+  final bool read;
+
+  String? get lobbyId => payload['lobbyId'] as String?;
+
+  /// Kalimat yang ditampilkan ke pemain untuk tiap jenis notifikasi.
+  String get message {
+    final amount = _asInt(payload['amount']);
+    final share = _asInt(payload['share']);
+    return switch (type) {
+      'SHARE_CHANGED' => 'Porsi patunganmu sekarang ${rupiah(share)}.',
+      'SHARE_PROTECTION' =>
+        'Porsimu naik jadi ${rupiah(share)}. Kamu boleh keluar tanpa denda '
+            'sampai ${_clock(payload['until'])}.',
+      'FREE_PERIOD_ENDING' =>
+        'Masa bebas keluar berakhir ${_clock(payload['until'])}. '
+            'Setelah itu kamu terkunci.',
+      'AUTO_LEFT' =>
+        'Saldomu tidak cukup untuk porsi baru ${rupiah(share)}, jadi kamu '
+            'keluar otomatis. ${rupiah(_asInt(payload['refund']))} kembali penuh.',
+      'KICKED' =>
+        'Kamu dikeluarkan dari room. ${rupiah(_asInt(payload['refund']))} '
+            'kembali penuh.',
+      'REPLACED' =>
+        'Kursimu sudah terisi pengganti. ${rupiah(_asInt(payload['refund']))} '
+            'kembali, denda ${rupiah(_asInt(payload['fine']))}.',
+      'LOBBY_CANCELLED' =>
+        'Room "${payload['title'] ?? ''}" dibubarkan. Dana kembali penuh'
+            '${_asInt(payload['compensation']) > 0 ? ' + kompensasi ${rupiah(_asInt(payload['compensation']))}' : ''}.',
+      'HOST_TRANSFERRED' => 'Kamu sekarang host room ini.',
+      'FINE_RECEIVED' => 'Kamu menerima bagian denda ${rupiah(amount)}.',
+      'BOOKING_CONFIRMED' =>
+        'Join ditutup. Booking ${payload['bookingCode'] ?? ''} terbit, '
+            'porsi final ${rupiah(share)}.',
+      _ => 'Ada kabar baru dari room-mu.',
+    };
+  }
+}
+
+class NotificationsState {
+  const NotificationsState({this.items = const [], this.unread = 0});
+
+  final List<AppNotification> items;
+  final int unread;
+}
+
+class NotificationsNotifier extends Notifier<NotificationsState> {
+  @override
+  NotificationsState build() => const NotificationsState();
+
+  Future<String?> refresh() async {
+    try {
+      final data = _asMap(await api.get('/me/notifications'));
+      state = NotificationsState(
+        unread: _asInt(data['unread']),
+        items: [
+          for (final item in _asList(data['items']))
+            AppNotification(
+              id: _asMap(item)['id'] as String? ?? '',
+              type: _asMap(item)['type'] as String? ?? '',
+              payload: _asMap(_asMap(item)['payload']),
+              createdAt: _asDate(_asMap(item)['createdAt']),
+              read: _asMap(item)['readAt'] != null,
+            ),
+        ],
+      );
+      return null;
+    } catch (error) {
+      return apiMessage(error);
+    }
+  }
+
+  Future<void> markAllRead() async {
+    if (state.unread == 0) return;
+    try {
+      await api.post('/me/notifications/read');
+      state = NotificationsState(items: state.items, unread: 0);
+    } catch (_) {
+      // Tetap belum terbaca; dicoba lagi saat layar dibuka berikutnya.
+    }
+  }
+}
+
+/// Jam WIB "HH.mm" dari timestamp API.
+String _clock(Object? value) {
+  final d = wib(_asDate(value));
+  return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
+final notificationsProvider =
+    NotifierProvider<NotificationsNotifier, NotificationsState>(
+      NotificationsNotifier.new,
+    );

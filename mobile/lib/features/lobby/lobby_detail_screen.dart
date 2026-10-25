@@ -7,8 +7,8 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../data/state.dart';
 
-/// Detail room gaya "absen patungan": foto, ringkasan, daftar absen
-/// bernomor, aturan batal, lalu bar join.
+/// Detail room gaya "absen patungan": foto, ringkasan, kursiku, daftar absen
+/// bernomor, aturan patungan v2, lalu bar join/keluar.
 class LobbyDetailScreen extends ConsumerStatefulWidget {
   const LobbyDetailScreen({super.key, required this.id});
 
@@ -69,6 +69,10 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
                 const SizedBox(height: 16),
                 _Summary(lobby: lobby),
                 const SizedBox(height: 20),
+                if (lobby.mine != null) ...[
+                  _MySeatCard(lobby: lobby, seat: lobby.mine!),
+                  const SizedBox(height: 20),
+                ],
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
@@ -85,22 +89,24 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
                     Text(
                       lobby.isFull
                           ? '· penuh'
-                          : '· ${lobby.remaining} slot lagi',
+                          : '· ${lobby.remaining} kursi lagi',
                       style: T.caption,
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 for (var i = 0; i < lobby.members.length; i++)
-                  AttendRow(
+                  _MemberRow(
                     number: i + 1,
-                    name: lobby.members[i].name,
-                    tag: lobby.members[i].isHost
-                        ? 'host'
-                        : lobby.members[i].isMe
-                        ? 'kamu'
+                    member: lobby.members[i],
+                    onKick: _canKick(lobby, lobby.members[i])
+                        ? () => _confirmKick(
+                            context,
+                            ref,
+                            lobby,
+                            lobby.members[i],
+                          )
                         : null,
-                    trailing: null,
                   ),
                 for (var i = lobby.members.length; i < lobby.quota; i++)
                   AttendRow(
@@ -110,9 +116,10 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
                     pending: true,
                   ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Centang = dana sudah dikunci. Saat baris terakhir terisi, '
-                  'booking dan tiket QR terbit otomatis.',
+                Text(
+                  'Biaya dibagi rata ke semua kursi. Tiap ada yang join, porsi '
+                  'turun; selisihnya kembali saat join ditutup '
+                  '${formatTime(lobby.deadline)}, lalu booking dan tiket QR terbit.',
                   style: T.caption,
                 ),
                 const SizedBox(height: 20),
@@ -146,27 +153,26 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
                   _PrivateCard(lobby: lobby),
                 ],
                 const SizedBox(height: 20),
-                const Text('Kalau batal', style: T.h2),
+                const Text('Kalau keluar', style: T.h2),
                 const SizedBox(height: 6),
-                _RuleRow(
-                  title: 'Lebih dari 6 jam sebelum main',
+                const _RuleRow(
+                  title: '0–2 jam setelah join',
                   detail: 'Refund penuh',
                   color: C.primary,
                 ),
-                _RuleRow(
-                  title: 'Kurang dari 6 jam',
-                  detail:
-                      'Denda 15% · ${rupiah((lobby.pricePerPerson * 15) ~/ 100)}',
+                const _RuleRow(
+                  title: 'Setelah itu, ada pengganti',
+                  detail: 'Refund − Rp10.000',
                   color: C.amber,
                 ),
-                _RuleRow(
-                  title: 'Tidak datang',
-                  detail: 'Hangus ${rupiah(lobby.pricePerPerson)}',
+                const _RuleRow(
+                  title: 'Tidak ada pengganti / sudah ditutup',
+                  detail: 'Hangus',
                   color: C.danger,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Slot dikunci ${formatCountdown(lobby.untilStart)} lagi.',
+                  'Join ditutup ${formatCountdown(lobby.deadline.difference(DateTime.now()))} lagi.',
                   style: T.caption,
                 ),
               ],
@@ -179,7 +185,8 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
         wallet: wallet,
         joined: lobby.joinedByMe,
         onJoin: () => _openJoinSheet(context, ref, lobby),
-        onCancel: () => _confirmCancel(context, ref, lobby),
+        onLeave: () => _confirmLeave(context, ref, lobby),
+        onDisband: () => _confirmDisband(context, ref, lobby),
       ),
     );
   }
@@ -205,15 +212,16 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
             const SizedBox(height: 12),
             _BillRow('Harga lapangan', rupiah(lobby.priceTotal)),
             _BillRow(
-              'Dibagi ${lobby.quota} orang',
+              lobby.vacant > 0
+                  ? 'Mengisi kursi kosong'
+                  : 'Dibagi ${(lobby.seats ?? lobby.joined) + 1} kursi',
               rupiah(lobby.pricePerPerson),
             ),
-            if (roundingSurplus(lobby.priceTotal, lobby.quota) > 0)
-              _BillRow(
-                'Surplus pembulatan ke venue',
-                rupiah(roundingSurplus(lobby.priceTotal, lobby.quota)),
-                muted: true,
-              ),
+            const _BillRow(
+              'Porsi turun tiap ada yang join; selisihnya kembali saat join ditutup.',
+              '',
+              muted: true,
+            ),
             const Divider(height: 22),
             Row(
               children: [
@@ -253,7 +261,7 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
                   const Expanded(
                     child: Text(
                       'Saya paham dana dikunci saat join dan aturan '
-                      'pembatalan di atas berlaku.',
+                      'keluar di atas berlaku.',
                       style: T.small,
                     ),
                   ),
@@ -292,30 +300,47 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          updated?.isFull == true
-              ? 'Kuota penuh. Booking dibuat, tiket QR sudah terbit.'
-              : '${rupiah(lobby.pricePerPerson)} dikunci. '
-                    'Sisa ${updated?.remaining ?? 0} slot.',
+          '${rupiah(lobby.pricePerPerson)} dikunci. Masa bebas keluar 2 jam. '
+          'Sisa ${updated?.remaining ?? 0} kursi.',
         ),
       ),
     );
-    if (updated?.isFull == true) context.go('/home');
   }
 
-  Future<void> _confirmCancel(
+  bool _canKick(Lobby lobby, Member m) =>
+      lobby.isHost &&
+      lobby.status == LobbyStatus.open &&
+      DateTime.now().isBefore(lobby.deadline) &&
+      m.isActive &&
+      !m.isHost &&
+      m.userId != null;
+
+  Future<void> _run(
     BuildContext context,
-    WidgetRef ref,
-    Lobby lobby,
-  ) async {
+    Future<(String?, String?)> action, {
+    bool popOnSuccess = false,
+  }) async {
+    final (message, error) = await action;
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(error ?? message!)));
+    if (error == null && popOnSuccess) {
+      context.canPop() ? context.pop() : context.go('/home');
+    }
+  }
+
+  Future<bool> _ask(
+    BuildContext context, {
+    required String title,
+    required String body,
+    required String confirm,
+  }) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Batalkan join?', style: T.h2),
-        content: Text(
-          'Dana ${rupiah(lobby.pricePerPerson)} kembali penuh ke dompetmu '
-          'selama masih sebelum batas join (6 jam sebelum mulai).',
-          style: T.body,
-        ),
+        title: Text(title, style: T.h2),
+        content: Text(body, style: T.body),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -323,26 +348,214 @@ class _LobbyDetailScreenState extends ConsumerState<LobbyDetailScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Ya, batalkan',
-              style: TextStyle(color: C.danger),
-            ),
+            child: Text(confirm, style: const TextStyle(color: C.danger)),
           ),
         ],
       ),
     );
-    if (ok != true) return;
-    final error = await ref
-        .read(lobbiesProvider.notifier)
-        .leaveRemote(lobby.id);
-    if (!context.mounted) return;
-    if (error != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error)));
+    return ok == true;
+  }
+
+  Future<void> _confirmKick(
+    BuildContext context,
+    WidgetRef ref,
+    Lobby lobby,
+    Member m,
+  ) async {
+    if (!await _ask(
+      context,
+      title: 'Keluarkan ${m.name}?',
+      body:
+          'Dananya kembali penuh dan porsi anggota lain naik. Anggota yang '
+          'porsinya naik di atas porsi saat join boleh keluar tanpa denda '
+          'selama 30 menit.',
+      confirm: 'Keluarkan',
+    )) {
       return;
     }
-    context.pop();
+    if (!context.mounted) return;
+    await _run(
+      context,
+      ref.read(lobbiesProvider.notifier).kickRemote(lobby.id, m.userId!),
+    );
+  }
+
+  Future<void> _confirmDisband(
+    BuildContext context,
+    WidgetRef ref,
+    Lobby lobby,
+  ) async {
+    if (!await _ask(
+      context,
+      title: 'Bubarkan room?',
+      body:
+          'Semua anggota dapat refund penuh. Gratis kalau room baru dibuat '
+          '(< 2 jam) atau belum ada anggota. Selain itu kamu kena denda '
+          'sebesar porsimu (${rupiah(lobby.hostShare ?? lobby.share)}): separuh '
+          'ke anggota (termasuk yang kamu keluarkan), separuh ke venue.',
+      confirm: 'Bubarkan',
+    )) {
+      return;
+    }
+    if (!context.mounted) return;
+    await _run(
+      context,
+      ref.read(lobbiesProvider.notifier).disbandRemote(lobby.id),
+      popOnSuccess: true,
+    );
+  }
+
+  Future<void> _confirmLeave(
+    BuildContext context,
+    WidgetRef ref,
+    Lobby lobby,
+  ) async {
+    final seat = lobby.mine;
+    final hold = rupiah(seat?.holdAmount ?? lobby.share);
+    final body = switch (seat?.phase) {
+      'FREE' => 'Kamu masih di masa bebas: $hold kembali penuh.',
+      'PROTECTED' =>
+        'Porsimu naik, jadi kamu boleh keluar tanpa denda: $hold kembali penuh.',
+      'HOST' =>
+        'Hari H: kamu keluar tanpa refund dan hak host pindah ke anggota '
+            'yang paling lama join. Room tetap berjalan.',
+      'FINAL' =>
+        'Join sudah ditutup. Kamu keluar tanpa refund; porsi anggota lain '
+            'tidak berubah.',
+      _ =>
+        'Kamu sudah terkunci. Kursimu jadi kursi kosong: kalau ada pengganti, '
+            'dana kembali dikurangi Rp10.000; kalau tidak ada sampai join '
+            'ditutup, dana hangus.',
+    };
+    if (!await _ask(
+      context,
+      title: 'Keluar dari room?',
+      body: body,
+      confirm: 'Ya, keluar',
+    )) {
+      return;
+    }
+    if (!context.mounted) return;
+    await _run(
+      context,
+      ref.read(lobbiesProvider.notifier).leaveRemote(lobby.id),
+    );
+  }
+}
+
+/// Fase kursiku: apa yang terjadi kalau aku keluar sekarang.
+class _MySeatCard extends StatelessWidget {
+  const _MySeatCard({required this.lobby, required this.seat});
+
+  final Lobby lobby;
+  final MySeat seat;
+
+  @override
+  Widget build(BuildContext context) {
+    String at(DateTime? d) => d == null ? '-' : formatTime(wib(d));
+    final (title, body, color) = switch (seat.phase) {
+      'FREE' => (
+        'Masa bebas sampai ${at(seat.freeUntil)}',
+        'Keluar sekarang = refund penuh.',
+        C.primary,
+      ),
+      'PROTECTED' => (
+        'Porsimu naik ke ${rupiah(lobby.share)}',
+        'Di atas ${rupiah(seat.shareAtJoin)} saat kamu join. Boleh keluar '
+            'tanpa denda sampai ${at(seat.protectUntil)}; kalau tidak, '
+            'dianggap lanjut.',
+        C.amber,
+      ),
+      'HOST' => (
+        'Kamu host · jaminan ${rupiah(lobby.priceTotal)}',
+        'Dana 100% ditahan sampai join ditutup, lalu sisanya kembali. '
+            'Bubarkan paling lambat H-1.',
+        C.primary,
+      ),
+      'LOCKED' => (
+        'Terkunci · porsimu ${rupiah(lobby.share)}',
+        'Keluar = cari pengganti (denda Rp10.000) atau hangus.',
+        C.amber,
+      ),
+      'VACANT' => (
+        'Kursimu menunggu pengganti',
+        'Kalau terisi, ${rupiah(seat.holdAmount)} kembali dikurangi Rp10.000.',
+        C.amber,
+      ),
+      'REPLACED' => (
+        'Kursimu sudah diganti',
+        'Denda ${rupiah(seat.fineAmount)} dibagikan ke anggota setelah room selesai.',
+        C.muted,
+      ),
+      'ABSENT' => (
+        'Kamu tidak ikut main',
+        'Dana tidak dikembalikan; kursimu tetap terbayar.',
+        C.muted,
+      ),
+      _ => (
+        'Join ditutup · porsi final',
+        'Dana sudah dipotong ${rupiah(seat.holdAmount)}.',
+        C.primary,
+      ),
+    };
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: C.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: T.h3),
+          const SizedBox(height: 4),
+          Text(body, style: T.small),
+        ],
+      ),
+    );
+  }
+}
+
+/// Baris absen: nama, tag, dan tombol keluarkan untuk host.
+class _MemberRow extends StatelessWidget {
+  const _MemberRow({required this.number, required this.member, this.onKick});
+
+  final int number;
+  final Member member;
+  final VoidCallback? onKick;
+
+  @override
+  Widget build(BuildContext context) {
+    final tag = switch (member.status) {
+      'VACANT' => 'kursi kosong',
+      'ABSENT' => 'tidak main',
+      _ =>
+        member.isHost
+            ? 'host'
+            : member.isMe
+            ? 'kamu'
+            : null,
+    };
+    final row = AttendRow(
+      number: number,
+      name: member.status == 'VACANT' ? 'Menunggu pengganti' : member.name,
+      tag: tag,
+      pending: member.status == 'VACANT',
+    );
+    if (onKick == null) return row;
+    return Row(
+      children: [
+        Expanded(child: row),
+        IconButton(
+          tooltip: 'Keluarkan ${member.name}',
+          icon: const Icon(Icons.person_remove_outlined, size: 19),
+          color: C.danger,
+          onPressed: onKick,
+        ),
+      ],
+    );
   }
 }
 
@@ -480,14 +693,14 @@ class _Summary extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(rupiah(lobby.pricePerPerson), style: T.numberMd),
+              Text(rupiah(lobby.share), style: T.numberMd),
               const SizedBox(width: 5),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 2),
                   child: Text(
-                    'per orang · ${rupiah(lobby.priceTotal)} dibagi '
-                    '${lobby.quota}',
+                    'per kursi · ${rupiah(lobby.priceTotal)} dibagi '
+                    '${lobby.seats ?? lobby.joined}',
                     style: T.caption,
                   ),
                 ),
@@ -497,7 +710,7 @@ class _Summary extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              const Text('Batas kumpul', style: T.caption),
+              const Text('Join ditutup', style: T.caption),
               const SizedBox(width: 8),
               Text(
                 '${formatDate(lobby.deadline)}, '
@@ -601,18 +814,67 @@ class _JoinBar extends StatelessWidget {
     required this.wallet,
     required this.joined,
     required this.onJoin,
-    required this.onCancel,
+    required this.onLeave,
+    required this.onDisband,
   });
 
   final Lobby lobby;
   final Wallet wallet;
   final bool joined;
   final VoidCallback onJoin;
-  final VoidCallback onCancel;
+  final VoidCallback onLeave;
+  final VoidCallback onDisband;
+
+  /// Hari H (tanggal WIB main) sudah tiba: host tidak bisa membubarkan room.
+  bool get _matchDay {
+    final now = wib(DateTime.now());
+    final start = wib(lobby.start);
+    return !DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).isBefore(DateTime(start.year, start.month, start.day));
+  }
 
   @override
   Widget build(BuildContext context) {
     final enough = wallet.available >= lobby.pricePerPerson;
+    final open = lobby.status == LobbyStatus.open;
+    // Sudah keluar tapi kursinya masih tercatat: tidak bisa join lagi di sini.
+    final leftSeat = switch (lobby.mine?.status) {
+      'VACANT' => 'Kursimu menunggu pengganti',
+      'REPLACED' => 'Kursimu sudah diganti',
+      'ABSENT' => 'Kamu tidak ikut main',
+      _ => null,
+    };
+    final Widget action;
+    if (leftSeat != null) {
+      action = SebarButton(label: leftSeat, height: 46, onPressed: null);
+    } else if (joined && lobby.isHost && open && !_matchDay) {
+      action = GhostButton(
+        label: 'Bubarkan room',
+        color: C.danger,
+        height: 46,
+        onPressed: onDisband,
+      );
+    } else if (joined) {
+      action = GhostButton(
+        label: 'Keluar dari room',
+        color: C.danger,
+        height: 46,
+        onPressed: onLeave,
+      );
+    } else {
+      action = SebarButton(
+        label: !open || lobby.isFull
+            ? 'Room penuh'
+            : enough
+            ? 'Join · ${rupiah(lobby.pricePerPerson)}'
+            : 'Top up dulu',
+        height: 46,
+        onPressed: !open || lobby.isFull ? null : onJoin,
+      );
+    }
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: C.surface,
@@ -628,12 +890,15 @@ class _JoinBar extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Text(joined ? 'Porsimu' : 'Saldo tersedia', style: T.caption),
                   Text(
-                    joined ? 'Kamu ikut' : 'Saldo tersedia',
-                    style: T.caption,
-                  ),
-                  Text(
-                    rupiah(joined ? lobby.pricePerPerson : wallet.available),
+                    rupiah(
+                      !joined
+                          ? wallet.available
+                          : lobby.mine?.phase == 'HOST'
+                          ? lobby.hostShare ?? lobby.share
+                          : lobby.share,
+                    ),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -643,24 +908,7 @@ class _JoinBar extends StatelessWidget {
                 ],
               ),
               const SizedBox(width: 14),
-              Expanded(
-                child: joined
-                    ? GhostButton(
-                        label: 'Batalkan join',
-                        color: C.danger,
-                        height: 46,
-                        onPressed: onCancel,
-                      )
-                    : SebarButton(
-                        label: lobby.isFull
-                            ? 'Room penuh'
-                            : enough
-                            ? 'Join · ${rupiah(lobby.pricePerPerson)}'
-                            : 'Top up dulu',
-                        height: 46,
-                        onPressed: lobby.isFull ? null : onJoin,
-                      ),
-              ),
+              Expanded(child: action),
             ],
           ),
         ),
@@ -722,7 +970,7 @@ class _PenaltyMini extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Konsekuensi batal',
+            'Kalau keluar',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -730,9 +978,12 @@ class _PenaltyMini extends StatelessWidget {
             ),
           ),
           SizedBox(height: 6),
-          Text('≥ 6 jam · refund penuh', style: T.caption),
-          Text('< 6 jam · tidak bisa keluar', style: T.caption),
-          Text('No-show · dana hangus', style: T.caption),
+          Text('2 jam pertama · keluar bebas, refund penuh', style: T.caption),
+          Text(
+            'Setelah itu · ada pengganti: refund − Rp10.000',
+            style: T.caption,
+          ),
+          Text('Tidak ada pengganti / tidak datang · hangus', style: T.caption),
         ],
       ),
     );

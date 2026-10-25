@@ -1,6 +1,6 @@
 import { query } from '../../db/pool.js';
 import { onDateWib, wibDayStart } from '../../lib/sql.js';
-import { JOIN_CUTOFF_HOURS } from '../lobbies/membership.service.js';
+import { JOIN_CLOSE_MINUTES } from '../lobbies/patungan.service.js';
 import { courtJson, hourOf } from './courts.shared.js';
 import { ACTIVE_LOBBY, SLOT_SELECT } from './slots.shared.js';
 
@@ -34,7 +34,7 @@ export async function listSlots(venueId, date) {
 //   FREE   = a room can start here
 //   TAKEN  = an active room/booking covers this hour
 //   CLOSED = the owner blocked this hour
-//   PAST   = too late to make a room (starts within JOIN_CUTOFF_HOURS)
+//   PAST   = too late to make a room (starts within JOIN_CLOSE_MINUTES)
 export async function availability(venueId, date) {
   const courts = await query(
     `SELECT ${courtJson('c')} AS court
@@ -51,7 +51,7 @@ export async function availability(venueId, date) {
   );
   // Noon WIB is the same UTC calendar day, so getUTCDay() is the WIB weekday.
   const weekend = [0, 6].includes(new Date(`${date}T12:00:00+07:00`).getUTCDay());
-  const cutoff = Date.now() + JOIN_CUTOFF_HOURS * 3600_000;
+  const cutoff = Date.now() + JOIN_CLOSE_MINUTES * 60_000;
   const byCourt = Map.groupBy(slots.rows, (s) => s.court_id);
   return {
     date,
