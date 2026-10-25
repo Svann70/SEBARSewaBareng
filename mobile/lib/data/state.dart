@@ -519,6 +519,7 @@ class ApiVenue {
     required this.city,
     required this.courts,
     this.address = '',
+    this.photoUrl,
   });
 
   final String id;
@@ -527,11 +528,23 @@ class ApiVenue {
   final String address;
   final List<ApiCourt> courts;
 
+  /// Foto venue; null = pakai foto lapangan pertama yang punya foto.
+  final String? photoUrl;
+
+  String? get coverUrl {
+    if (photoUrl != null && photoUrl!.isNotEmpty) return photoUrl;
+    for (final c in courts) {
+      if (c.photos.isNotEmpty) return c.photos.first.url;
+    }
+    return null;
+  }
+
   factory ApiVenue.fromJson(Map<String, dynamic> json) => ApiVenue(
     id: json['id'] as String? ?? '',
     name: json['name'] as String? ?? 'Venue',
     city: json['city'] as String? ?? '',
     address: json['address'] as String? ?? '',
+    photoUrl: json['photoUrl'] as String?,
     courts: [
       for (final c in _asList(json['courts'])) ApiCourt.fromJson(_asMap(c)),
     ],
@@ -1858,7 +1871,12 @@ class WalletNotifier extends Notifier<Wallet> {
     );
   }
 
-  void withdraw(int amount, {int fee = 2500, String? bankCode, String? accountNumber}) {
+  void withdraw(
+    int amount, {
+    int fee = 2500,
+    String? bankCode,
+    String? accountNumber,
+  }) {
     final total = amount + fee;
     final entry = WalletEntry(
       type: 'PAYOUT',
