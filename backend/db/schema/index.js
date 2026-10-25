@@ -11,6 +11,7 @@ export * from "./notifications.js";
 export * from "./audit-log.js";
 export * from "./wallets.js";
 export * from "./wallet-ledger.js";
+export * from "./wallet-withdrawals.js";
 export * from "./venues.js";
 export * from "./courts.js";
 export * from "./court-sports.js";

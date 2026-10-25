@@ -12,6 +12,7 @@ export const lobbyStatus = pgEnum("lobby_status", ['OPEN', 'FILLED', 'CONFIRMED'
 export const memberRole = pgEnum("member_role", ['HOST', 'PLAYER'])
 export const memberStatus = pgEnum("member_status", ['HOLDING', 'CONFIRMED', 'CANCELLED', 'REFUNDED', 'PENALIZED', 'NO_SHOW'])
 export const payoutStatus = pgEnum("payout_status", ['PENDING', 'PAID'])
+export const withdrawalStatus = pgEnum("withdrawal_status", ['PENDING', 'PROCESSING', 'COMPLETED', 'REJECTED'])
 export const reliabilityReason = pgEnum("reliability_reason", ['CHECKIN', 'LATE_CANCEL', 'NO_SHOW', 'HOST_CANCEL', 'MANUAL_ADJUST'])
 export const slotStatus = pgEnum("slot_status", ['OPEN', 'LOBBY_FULL', 'BOOKED', 'BLOCKED', 'PAST'])
 export const sportType = pgEnum("sport_type", ['BADMINTON', 'FUTSAL', 'VOLLEY', 'MINISOCCER', 'BASKETBALL', 'TENNIS', 'PADEL'])
