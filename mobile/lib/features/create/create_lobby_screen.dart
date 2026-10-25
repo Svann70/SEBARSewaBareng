@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,7 +9,8 @@ import '../../core/theme.dart';
 import '../../core/widgets.dart';
 import '../../data/state.dart';
 
-/// Buat room 3 langkah: 1) pilih venue, 2) pilih tanggal + jam, 3) atur room.
+/// Buat room 4 langkah: 1) pilih venue, 2) pilih lapangan (kartu berfoto,
+/// seperti memilih kamar hotel), 3) pilih tanggal + jam, 4) atur room.
 ///
 /// Jam diambil dari jam buka lapangan (GET /venues/:id/availability): semua
 /// jam kosong bisa dipilih tanpa venue membuka slot dulu. Slot dibuat server
@@ -97,13 +99,17 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     return _Pick(day, hour, _hours);
   }
 
-  /// Cek apakah 1 jam setelah rentang saat ini masih kosong & dalam jam buka.
-  bool get _canAddHour {
+  /// Jam kosong berturut-turut mulai jam terpilih (maks 8). Belum pilih jam = 8.
+  int get _maxHours {
     final day = _courtDay;
     final hour = _hour;
-    if (day == null || hour == null || _hours >= 8) return false;
-    final nextHour = hour + _hours;
-    return day.hours.any((h) => h.hour == nextHour && h.state == HourState.free);
+    if (day == null || hour == null) return 8;
+    var n = 0;
+    while (n < 8 &&
+        day.hours.any((h) => h.hour == hour + n && h.state == HourState.free)) {
+      n++;
+    }
+    return n;
   }
 
   Sport get _sportToPlay {
@@ -131,7 +137,6 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
       _loadingGrid = true;
       _gridError = null;
       _hour = null;
-      _courtId = null;
     });
     List<CourtDay> grid = const [];
     String? error;
@@ -160,8 +165,17 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     }
     setState(() {
       _venueId = venue.id;
+      _courtId = null;
       _title.clear();
       _step = 1;
+    });
+  }
+
+  void _pickCourt(ApiCourt court) {
+    setState(() {
+      _courtId = court.id;
+      _playSport = null;
+      _step = 2;
     });
     _loadGrid();
   }
@@ -189,22 +203,10 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
         _hours--;
         return;
       }
-      _courtId = day.court.id;
       _hour = cell.hour;
-      _playSport = null;
       _quota = _quota.clamp(2, _capacity);
-      // Sesuaikan durasi bila melebihi jam kosong berturut-turut yang tersedia
-      var freeCount = 0;
-      for (var h = cell.hour; h < cell.hour + _hours; h++) {
-        if (day.hours.any((c) => c.hour == h && c.state == HourState.free)) {
-          freeCount++;
-        } else {
-          break;
-        }
-      }
-      if (freeCount > 0 && freeCount < _hours) {
-        _hours = freeCount;
-      }
+      // Durasi tidak boleh melewati jam terisi/tutup berikutnya.
+      _hours = _hours.clamp(1, _maxHours);
     });
   }
 
@@ -213,13 +215,22 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
   String _autoTitle(Sport sport, DateTime start) =>
       '${sport.label} ${_dayName(wib(start))}';
 
-  void _toStep3(_Pick pick) {
+  /// Nama bawaan terakhir yang diisi otomatis; sama dengan isi field = belum diubah pemain.
+  String? _lastAutoTitle;
+
+  void _setAutoTitle(Sport sport, DateTime start) {
+    _lastAutoTitle = _autoTitle(sport, start);
+    _title.text = _lastAutoTitle!;
+  }
+
+  void _toDetail(_Pick pick) {
     setState(() {
-      if (_title.text.trim().isEmpty) {
-        _title.text = _autoTitle(_sportToPlay, pick.start);
+      // Ganti lapangan/hari: nama bawaan ikut diperbarui.
+      if (_title.text.trim().isEmpty || _title.text == _lastAutoTitle) {
+        _setAutoTitle(_sportToPlay, pick.start);
       }
       _quota = _quota.clamp(2, _capacity);
-      _step = 2;
+      _step = 3;
     });
   }
 
@@ -299,7 +310,8 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
         ),
       ),
     );
-    context.pop();
+    // Dibuka langsung lewat URL: tidak ada halaman untuk kembali.
+    context.canPop() ? context.pop() : context.go('/home');
   }
 
   @override
@@ -308,25 +320,41 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     final venue = _venueOf(venues);
     final pick = _pick;
 
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            Expanded(
-              child: switch (_step) {
-                0 => _venueStep(venues),
-                1 => venue == null ? _venueStep(venues) : _hourStep(venue),
-                _ =>
-                  venue == null || pick == null
-                      ? _venueStep(venues)
-                      : _detailStep(venue, pick),
-              },
-            ),
-            if (_step == 1 && venue != null) _hourFooter(pick),
-            if (_step == 2 && venue != null && pick != null)
-              _detailFooter(pick),
-          ],
+    // Back sistem mundur satu langkah; hanya langkah 1 yang menutup halaman.
+    return PopScope(
+      canPop: _step == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_busy) setState(() => _step--);
+      },
+      child: Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              Expanded(
+                // Key per langkah: tiap langkah mulai dari atas, bukan mewarisi posisi scroll.
+                child: KeyedSubtree(
+                  key: ValueKey(_step),
+                  child: switch (_step) {
+                    0 => _venueStep(venues),
+                    1 => venue == null ? _venueStep(venues) : _courtStep(venue),
+                    2 =>
+                      venue == null || _courtId == null
+                          ? _venueStep(venues)
+                          : _hourStep(venue),
+                    _ =>
+                      venue == null || pick == null
+                          ? _venueStep(venues)
+                          : _detailStep(venue, pick),
+                  },
+                ),
+              ),
+              if (_step == 2 && venue != null && _courtId != null)
+                _hourFooter(pick),
+              if (_step == 3 && venue != null && pick != null)
+                _detailFooter(pick),
+            ],
+          ),
         ),
       ),
     );
@@ -378,20 +406,24 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
             message: 'Coba kata kunci lain atau ganti cabang olahraga.',
           )
         else
-          for (final venue in list) _VenueRow(venue: venue, onTap: _pickVenue),
+          for (final venue in list)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: _VenueCard(venue: venue, onTap: _pickVenue),
+            ),
       ],
     );
   }
 
-  // ── Langkah 2: tanggal & jam ─────────────────────────────────────────────
+  // ── Langkah 2: lapangan ──────────────────────────────────────────────────
 
-  Widget _hourStep(ApiVenue venue) {
-    final today = wibToday();
-    final days = [for (var i = 0; i < 7; i++) today.add(Duration(days: i))];
-    final hours = <int>{
-      for (final c in _grid)
-        for (final h in c.hours) h.hour,
-    }.toList()..sort();
+  Widget _courtStep(ApiVenue venue) {
+    // Filter cabang dari langkah 1 ikut dipakai; tidak ada yang cocok = tampilkan semua.
+    final matching = [
+      for (final c in venue.courts)
+        if (_sport == null || c.allSports.any((s) => s.sport == _sport)) c,
+    ];
+    final courts = matching.isEmpty ? venue.courts : matching;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -400,6 +432,55 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
           step: 1,
           title: venue.name,
           onBack: () => setState(() => _step = 0),
+        ),
+        const SizedBox(height: 14),
+        if (venue.address.isNotEmpty) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.place_outlined, size: 16, color: C.muted),
+              const SizedBox(width: 6),
+              Expanded(child: Text(venue.address, style: T.small)),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
+        Text('${courts.length} lapangan', style: T.label),
+        if (courts.isEmpty)
+          const EmptyState(
+            icon: Icons.stadium_outlined,
+            title: 'Belum ada lapangan',
+            message: 'Venue ini belum menyiapkan lapangan untuk dipesan.',
+          )
+        else
+          for (final court in courts)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: _CourtCard(court: court, onTap: () => _pickCourt(court)),
+            ),
+      ],
+    );
+  }
+
+  // ── Langkah 3: tanggal & jam ─────────────────────────────────────────────
+
+  Widget _hourStep(ApiVenue venue) {
+    final today = wibToday();
+    final days = [for (var i = 0; i < 7; i++) today.add(Duration(days: i))];
+    final day = _courtDay;
+    ApiCourt? court;
+    for (final c in venue.courts) {
+      if (c.id == _courtId) court = c;
+    }
+    final maxHours = _maxHours;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: [
+        _StepHeader(
+          step: 2,
+          title: court?.name ?? venue.name,
+          onBack: () => setState(() => _step = 1),
         ),
         const SizedBox(height: 14),
         SizedBox(
@@ -432,62 +513,41 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
               onPressed: _loadGrid,
             ),
           )
-        else if (_grid.isEmpty)
+        else if (day == null)
           const EmptyState(
             icon: Icons.stadium_outlined,
-            title: 'Belum ada lapangan',
-            message: 'Venue ini belum menyiapkan lapangan untuk dipesan.',
+            title: 'Lapangan tidak tersedia',
+            message:
+                'Lapangan ini sedang tidak bisa dipesan. Pilih lapangan lain.',
           )
         else ...[
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const SizedBox(width: 48),
-                    for (final c in _grid)
-                      SizedBox(
-                        width: 96,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                c.court.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: C.ink,
-                                ),
-                              ),
-                              Text(
-                                '${_shortRupiah(c.rate)}/jam',
-                                style: T.caption,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const Divider(height: 1, color: C.line),
-                for (final hour in hours)
-                  _HourRow(
-                    hour: hour,
-                    grid: _grid,
-                    courtId: _courtId,
-                    from: _hour,
-                    hours: _hours,
-                    onPick: _pickHour,
+          Text('${_shortRupiah(day.rate)}/jam', style: T.label),
+          const SizedBox(height: 8),
+          for (final cell in day.hours)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 52,
+                    child: Text(
+                      '${cell.hour.toString().padLeft(2, '0')}.00',
+                      style: T.caption,
+                    ),
                   ),
-              ],
+                  Expanded(
+                    child: _HourCell(
+                      cell: cell,
+                      selected:
+                          _hour != null &&
+                          cell.hour >= _hour! &&
+                          cell.hour < _hour! + _hours,
+                      onTap: () => _pickHour(day, cell),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
           const SizedBox(height: 12),
           const _Legend(),
           const SizedBox(height: 18),
@@ -502,7 +562,10 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                     child: _ChoiceChip(
                       label: '$h jam',
                       selected: _hours == h,
-                      onTap: () => setState(() => _hours = h),
+                      // Lebih panjang dari jam kosong berturut-turut = tidak bisa dipilih.
+                      onTap: h <= maxHours
+                          ? () => setState(() => _hours = h)
+                          : null,
                     ),
                   ),
                 ),
@@ -523,14 +586,17 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
               _DurationStepper(
                 hours: _hours,
                 onDecrement: _hours > 1 ? () => setState(() => _hours--) : null,
-                onIncrement: _hours < 8 && (_hour == null || _canAddHour)
+                onIncrement: _hours < maxHours
                     ? () => setState(() => _hours++)
                     : null,
               ),
               const Spacer(),
               if (_hours > 4)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: C.primarySoft,
                     borderRadius: BorderRadius.circular(999),
@@ -560,7 +626,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
     );
   }
 
-  // ── Langkah 3: atur room ─────────────────────────────────────────────────
+  // ── Langkah 4: atur room ─────────────────────────────────────────────────
 
   Widget _detailStep(ApiVenue venue, _Pick pick) {
     final capacity = _capacity;
@@ -575,15 +641,15 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         _StepHeader(
-          step: 2,
+          step: 3,
           title: 'Atur room',
-          onBack: () => setState(() => _step = 1),
+          onBack: () => setState(() => _step = 2),
         ),
         const SizedBox(height: 14),
         _VenueSummary(
           venue: venue,
           pick: pick,
-          onChange: () => setState(() => _step = 1),
+          onChange: () => setState(() => _step = 2),
         ),
         if (sports.length > 1) ...[
           const SizedBox(height: 22),
@@ -603,11 +669,11 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                   label: '${s.sport.label} · ${s.capacity} orang',
                   selected: _sportToPlay == s.sport,
                   onTap: () => setState(() {
-                    if (_title.text == _autoTitle(_sportToPlay, pick.start)) {
-                      _title.text = _autoTitle(s.sport, pick.start);
+                    if (_title.text == _lastAutoTitle) {
+                      _setAutoTitle(s.sport, pick.start);
                     }
                     _playSport = s.sport;
-                    _quota = _quota.clamp(2, s.capacity);
+                    _quota = _quota.clamp(2, s.capacity.clamp(2, 30));
                   }),
                 ),
             ],
@@ -709,8 +775,10 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                 const SizedBox(width: 8),
                 _DurationStepper(
                   hours: _hours,
-                  onDecrement: _hours > 1 ? () => setState(() => _hours--) : null,
-                  onIncrement: _hours < 8 && _canAddHour
+                  onDecrement: _hours > 1
+                      ? () => setState(() => _hours--)
+                      : null,
+                  onIncrement: _hours < _maxHours
                       ? () => setState(() => _hours++)
                       : null,
                 ),
@@ -735,9 +803,11 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      pick == null
+                      pick != null
+                          ? '${pick.court.name} · ${pick.hours} jam'
+                          : _hour == null
                           ? 'Pilih jam dulu'
-                          : '${pick.court.name} · ${pick.hours} jam',
+                          : 'Durasi melewati jam terisi',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -748,9 +818,11 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      pick == null
+                      pick != null
+                          ? '${formatDate(wib(pick.start))} · ${rupiah(pick.price)}'
+                          : _hour == null
                           ? 'Ketuk jam kosong di jadwal'
-                          : '${formatDate(wib(pick.start))} · ${rupiah(pick.price)}',
+                          : 'Kurangi durasi atau pilih jam lain',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: T.caption,
@@ -765,7 +837,7 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                   label: 'Lanjut',
                   height: 48,
                   radius: 999,
-                  onPressed: pick == null ? null : () => _toStep3(pick),
+                  onPressed: pick == null ? null : () => _toDetail(pick),
                 ),
               ),
             ],
@@ -861,7 +933,7 @@ class _StepHeader extends StatelessWidget {
                     style: T.h1.copyWith(fontSize: 21),
                   ),
                   Text(
-                    'Buat room • langkah ${step + 1} dari 3',
+                    'Buat room • langkah ${step + 1} dari 4',
                     style: T.caption,
                   ),
                 ],
@@ -872,11 +944,11 @@ class _StepHeader extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           children: [
-            for (var i = 0; i < 3; i++)
+            for (var i = 0; i < 4; i++)
               Expanded(
                 child: Container(
                   height: 4,
-                  margin: EdgeInsets.only(right: i < 2 ? 6 : 0),
+                  margin: EdgeInsets.only(right: i < 3 ? 6 : 0),
                   decoration: BoxDecoration(
                     color: i <= step ? C.primaryFill : C.line,
                     borderRadius: BorderRadius.circular(999),
@@ -941,8 +1013,9 @@ class _SportFilter extends StatelessWidget {
   }
 }
 
-class _VenueRow extends StatelessWidget {
-  const _VenueRow({required this.venue, required this.onTap});
+/// Kartu venue berfoto sampul (foto venue, atau foto lapangan pertama).
+class _VenueCard extends StatelessWidget {
+  const _VenueCard({required this.venue, required this.onTap});
 
   final ApiVenue venue;
   final ValueChanged<ApiVenue> onTap;
@@ -958,59 +1031,251 @@ class _VenueRow extends StatelessWidget {
         ? '${_shortRupiah(min)}/jam'
         : '${_shortRupiah(min)}–${_shortRupiah(max)}/jam';
 
-    return InkWell(
+    return _Card(
       onTap: () => onTap(venue),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: C.line)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: C.primaryFill,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.stadium_outlined, color: C.ink, size: 26),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    venue.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: C.ink,
+      children: [
+        CourtPhoto(url: venue.coverUrl, height: 150, radius: 0),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      venue.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: C.ink,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${venue.city} · ${venue.courts.length} lapangan',
+                      style: T.small,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      range,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: C.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 22, color: C.faint),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Kartu lapangan ala pilih kamar hotel: galeri foto, olahraga, jam buka, tarif.
+class _CourtCard extends StatelessWidget {
+  const _CourtCard({required this.court, required this.onTap});
+
+  final ApiCourt court;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final weekend = court.priceWeekend;
+    return _Card(
+      onTap: onTap,
+      children: [
+        _PhotoGallery(photos: court.photos),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                court.name,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: C.ink,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final s in court.allSports)
+                    _Tag('${s.sport.label} · ${s.capacity} orang'),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.schedule, size: 15, color: C.muted),
+                  const SizedBox(width: 6),
                   Text(
-                    '${venue.city} · ${venue.courts.length} lapangan',
+                    'Buka ${_hh(court.openHour)}–${_hh(court.closeHour)}',
                     style: T.small,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    range,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: C.ink,
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${_shortRupiah(court.pricePerHour)}/jam',
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: C.ink,
+                          ),
+                        ),
+                        if (weekend != null && weekend != court.pricePerHour)
+                          Text(
+                            'Sab–Min ${_shortRupiah(weekend)}/jam',
+                            style: T.caption,
+                          ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    width: 112,
+                    child: SebarButton(
+                      label: 'Pilih jam',
+                      height: 40,
+                      radius: 999,
+                      onPressed: onTap,
                     ),
                   ),
                 ],
               ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Foto lapangan yang bisa digeser, dengan penanda "1/3".
+class _PhotoGallery extends StatefulWidget {
+  const _PhotoGallery({required this.photos});
+
+  final List<CourtPhotoInfo> photos;
+
+  @override
+  State<_PhotoGallery> createState() => _PhotoGalleryState();
+}
+
+class _PhotoGalleryState extends State<_PhotoGallery> {
+  int _page = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    const height = 180.0;
+    final photos = widget.photos;
+    if (photos.isEmpty) {
+      return const CourtPhoto(url: null, height: height, radius: 0);
+    }
+    return SizedBox(
+      height: height,
+      child: Stack(
+        children: [
+          // Mouse ikut bisa menggeser (Flutter web/desktop).
+          ScrollConfiguration(
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(dragDevices: PointerDeviceKind.values.toSet()),
+            child: PageView.builder(
+              itemCount: photos.length,
+              onPageChanged: (i) => setState(() => _page = i),
+              itemBuilder: (_, i) =>
+                  CourtPhoto(url: photos[i].url, height: height, radius: 0),
             ),
-            const Icon(Icons.chevron_right, size: 20, color: C.faint),
-          ],
+          ),
+          if (photos.length > 1)
+            Positioned(
+              right: 10,
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${_page + 1}/${photos.length}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Card extends StatelessWidget {
+  const _Card({required this.onTap, required this.children});
+
+  final VoidCallback onTap;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: C.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: C.line),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
+        ),
+      ),
+    );
+  }
+}
+
+class _Tag extends StatelessWidget {
+  const _Tag(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: C.primarySoft,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: C.primaryDeep,
         ),
       ),
     );
@@ -1061,65 +1326,6 @@ class _DayChip extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _HourRow extends StatelessWidget {
-  const _HourRow({
-    required this.hour,
-    required this.grid,
-    required this.courtId,
-    required this.from,
-    required this.hours,
-    required this.onPick,
-  });
-
-  final int hour;
-  final List<CourtDay> grid;
-  final String? courtId;
-  final int? from;
-  final int hours;
-  final void Function(CourtDay, HourCell) onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 48,
-          child: Text(
-            '${hour.toString().padLeft(2, '0')}.00',
-            style: T.caption,
-          ),
-        ),
-        for (final day in grid)
-          SizedBox(
-            width: 96,
-            child: Padding(
-              padding: const EdgeInsets.all(3),
-              child: Builder(
-                builder: (_) {
-                  HourCell? cell;
-                  for (final h in day.hours) {
-                    if (h.hour == hour) cell = h;
-                  }
-                  final start = from;
-                  final selected =
-                      day.court.id == courtId &&
-                      start != null &&
-                      hour >= start &&
-                      hour < start + hours;
-                  return _HourCell(
-                    cell: cell,
-                    selected: selected,
-                    onTap: cell == null ? null : () => onPick(day, cell!),
-                  );
-                },
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
@@ -1191,32 +1397,37 @@ class _ChoiceChip extends StatelessWidget {
 
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// null = tidak bisa dipilih (tampil redup).
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: selected ? C.primarySoft : C.surface,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
+    return Opacity(
+      opacity: onTap == null ? 0.4 : 1,
+      child: Material(
+        color: selected ? C.primarySoft : C.surface,
         borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? C.primaryCheck : C.line,
-              width: selected ? 1.5 : 1,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: selected ? C.primaryCheck : C.line,
+                width: selected ? 1.5 : 1,
+              ),
             ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: selected ? C.primaryDeep : C.ink,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: selected ? C.primaryDeep : C.ink,
+              ),
             ),
           ),
         ),
@@ -1638,6 +1849,9 @@ class _FooterBar extends StatelessWidget {
 }
 
 // ── Bantuan format ─────────────────────────────────────────────────────────
+
+/// 6 -> "06.00", 24 -> "24.00".
+String _hh(int hour) => '${hour.toString().padLeft(2, '0')}.00';
 
 String _dayName(DateTime d) {
   const days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
